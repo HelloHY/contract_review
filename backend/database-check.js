@@ -36,11 +36,20 @@ async function resetAndRebuildDatabase() {
         console.log('[DB Init] Creating new `users` table...');
         await db.schema.createTable('users', (table) => {
             table.increments('id').primary();
-            table.string('fingerprint_id').notNullable().unique();
+            table.string('fingerprint_id').unique();
+            table.string('username').unique();
+            table.string('password_hash');
+            table.string('display_name');
+            table.string('role').notNullable().defaultTo('user'); // admin / user
             table.timestamps(true, true);
         });
         console.log('[DB Init] New `users` table created successfully.');
     }
+
+    await ensureColumn('users', 'username', (table) => table.string('username').unique());
+    await ensureColumn('users', 'password_hash', (table) => table.string('password_hash'));
+    await ensureColumn('users', 'display_name', (table) => table.string('display_name'));
+    await ensureColumn('users', 'role', (table) => table.string('role').notNullable().defaultTo('user'));
 
     const hasContractsTable = await db.schema.hasTable('contracts');
     

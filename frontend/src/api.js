@@ -146,6 +146,18 @@ export default {
         return apiClient.post('/users/identify', payload);
     },
 
+    login(payload) {
+        return apiClient.post('/users/login', payload);
+    },
+
+    getUsers() {
+        return apiClient.get('/users');
+    },
+
+    updateUserRole(userId, role) {
+        return apiClient.put(`/users/${userId}/role`, { role });
+    },
+
     // This function is now corrected to fetch history for the current user via headers
     // The userId parameter is kept for compatibility with the calling component but is no longer used in the URL.
     getUserHistory(userId) {

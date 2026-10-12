@@ -1,24 +1,51 @@
 <template>
   <div id="app">
-    <header class="app-header">
+    <header v-if="showNav" class="app-header">
       <router-link to="/" class="brand" aria-label="合同审查首页">
         <img src="/asserts/logo.png" alt="合同审查" />
         <span>合同审查</span>
       </router-link>
       <nav class="app-nav">
         <router-link to="/" class="nav-link" active-class="nav-link-active">工作台</router-link>
+        <router-link to="/library" class="nav-link" active-class="nav-link-active">文件库</router-link>
         <router-link to="/review" class="nav-link" active-class="nav-link-active">合同审查</router-link>
         <router-link to="/qna" class="nav-link" active-class="nav-link-active">智能问答</router-link>
-        <router-link to="/settings" class="nav-link" active-class="nav-link-active">知识库</router-link>
+        <router-link v-if="isAdmin" to="/settings" class="nav-link" active-class="nav-link-active">知识库</router-link>
+        <router-link v-if="isAdmin" to="/users" class="nav-link" active-class="nav-link-active">用户管理</router-link>
       </nav>
+      <div class="user-area">
+        <span class="user-role">{{ roleText }}</span>
+        <span class="user-name">{{ displayName }}</span>
+        <button class="logout-button" @click="handleLogout">退出</button>
+      </div>
     </header>
     <router-view />
   </div>
 </template>
 
 <script>
+import { computed } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { getCurrentUser, logout, isAdmin } from './user';
+
 export default {
   name: 'App',
+  setup() {
+    const route = useRoute();
+    const router = useRouter();
+
+    const showNav = computed(() => route.path !== '/login');
+    const user = computed(() => getCurrentUser());
+    const displayName = computed(() => user.value?.displayName || user.value?.username || '');
+    const roleText = computed(() => (user.value?.role === 'admin' ? '管理员' : '普通用户'));
+
+    const handleLogout = () => {
+      logout();
+      router.replace('/login');
+    };
+
+    return { showNav, displayName, roleText, isAdmin, handleLogout };
+  },
 };
 </script>
 
@@ -114,6 +141,44 @@ a {
   background: #111111;
 }
 
+.user-area {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.user-role {
+  font-size: 11px;
+  font-weight: 800;
+  color: #888888;
+  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: #111111;
+}
+
+.logout-button {
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: #888888;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.logout-button:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
 .el-button,
 .el-input__wrapper,
 .el-textarea__inner,
@@ -142,6 +207,10 @@ a {
 
   .app-nav {
     width: 100%;
+  }
+
+  .user-area {
+    align-self: flex-end;
   }
 }
 </style>

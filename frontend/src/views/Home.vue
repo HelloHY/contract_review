@@ -11,139 +11,46 @@
         <p class="eyebrow">合同审查工作台</p>
         <h1>把合同风险看清楚，把修改意见落到文档里。</h1>
         <p class="hero-copy">上传合同后，按步骤确认范围、查看结论，并在同一页面完成修改建议采纳。</p>
-        <button class="primary-button" @click="startNewReview">开始审查</button>
+        <div class="hero-actions">
+          <button class="primary-button" @click="startNewReview">开始审查</button>
+          <button class="secondary-button" @click="goLibrary">前往文件库</button>
+        </div>
       </div>
     </section>
 
-    <section class="content-grid">
-      <div class="workflow-panel">
-        <div class="section-head">
-          <p class="eyebrow">审查步骤</p>
-          <h2>四步完成审查</h2>
-        </div>
-        <div class="workflow-list">
-          <article v-for="item in workflow" :key="item.title" class="workflow-item" :style="{ '--accent': item.color }">
-            <span>{{ item.step }}</span>
-            <div>
-              <h3>{{ item.title }}</h3>
-              <p>{{ item.copy }}</p>
-            </div>
-          </article>
-        </div>
+    <section class="workflow-panel">
+      <div class="section-head">
+        <p class="eyebrow">审查步骤</p>
+        <h2>四步完成审查</h2>
       </div>
-
-      <div class="history-panel">
-        <div class="section-head history-head">
+      <div class="workflow-list">
+        <article v-for="item in workflow" :key="item.title" class="workflow-item" :style="{ '--accent': item.color }">
+          <span>{{ item.step }}</span>
           <div>
-            <p class="eyebrow">审查记录</p>
-            <h2>最近处理的合同</h2>
+            <h3>{{ item.title }}</h3>
+            <p>{{ item.copy }}</p>
           </div>
-          <button class="secondary-button" @click="fetchHistory">刷新</button>
-        </div>
-
-        <!-- 搜索与筛选 -->
-        <div v-if="history.length > 0" class="history-filters">
-          <input
-            v-model="searchKeyword"
-            class="history-search-input"
-            type="text"
-            placeholder="按文件名搜索..."
-          />
-          <select v-model="statusFilter" class="history-filter-select">
-            <option value="">全部状态</option>
-            <option value="Reviewed">已完成</option>
-            <option value="Uploaded">已上传</option>
-            <option value="PreAnalyzed">待确认</option>
-          </select>
-          <select v-model="typeFilter" class="history-filter-select">
-            <option value="">全部类型</option>
-            <option v-for="t in availableContractTypes" :key="t" :value="t">{{ t }}</option>
-          </select>
-        </div>
-
-        <div v-if="loading" class="empty-block">正在加载审查记录...</div>
-        <div v-else-if="error" class="empty-block danger">{{ error }}</div>
-        <div v-else-if="history.length === 0" class="empty-block">
-          <h3>暂无审查记录</h3>
-          <p>开始审查后，记录会显示在这里。</p>
-        </div>
-        <div v-else-if="filteredHistory.length === 0" class="empty-block">
-          <h3>未匹配到记录</h3>
-          <p>请调整搜索关键词或筛选条件。</p>
-        </div>
-        <HistoryTable
-          v-else
-          :items="pagedHistory"
-          :page="historyPage"
-          :total-pages="totalHistoryPages"
-          @view="viewReport"
-          @delete="deleteReport"
-          @update:page="historyPage = $event"
-        />
+        </article>
       </div>
     </section>
-
-    <GroupReportModal
-      :visible="groupReportVisible"
-      :loading="groupReportLoading"
-      :report="groupReport"
-      @close="closeGroupReport"
-    />
   </main>
 </template>
 
 <script>
-import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
-import api from '../api';
-import GroupReportModal from '../components/GroupReportModal.vue';
-import HistoryTable from '../components/HistoryTable.vue';
-import { useHomeHistory, formatDate, statusText } from '../composables/useHomeHistory';
 
 export default {
   name: 'HomeView',
-  components: { GroupReportModal, HistoryTable },
   setup() {
     const router = useRouter();
-    const groupReportVisible = ref(false);
-    const groupReportLoading = ref(false);
-    const groupReport = ref(null);
-
-    const {
-      history, loading, error, historyPage,
-      searchKeyword, statusFilter, typeFilter,
-      availableContractTypes, filteredHistory, totalHistoryPages, pagedHistory,
-      fetchHistory, deleteReport,
-    } = useHomeHistory();
-
-    const viewReport = async (item) => {
-      if (item.record_type !== 'group') {
-        router.push({ path: '/review', query: { contract_id: item.id } });
-        return;
-      }
-      groupReportVisible.value = true;
-      groupReportLoading.value = true;
-      groupReport.value = null;
-      try {
-        const response = await api.getContractGroup(item.id);
-        groupReport.value = response.data;
-      } catch (err) {
-        ElMessage.error('加载关联合同分析报告失败。');
-        groupReportVisible.value = false;
-      } finally {
-        groupReportLoading.value = false;
-      }
-    };
-
-    const closeGroupReport = () => {
-      groupReportVisible.value = false;
-      groupReport.value = null;
-    };
 
     const startNewReview = () => {
       localStorage.removeItem('review_session');
       router.push({ path: '/review' });
+    };
+
+    const goLibrary = () => {
+      router.push({ path: '/library' });
     };
 
     const workflow = [
@@ -153,36 +60,23 @@ export default {
       { step: '04', title: '采纳修改', color: '#111111', copy: '把修改同步到文档。' },
     ];
 
-    return {
-      workflow,
-      history, loading, error, historyPage,
-      groupReportVisible, groupReportLoading, groupReport,
-      totalHistoryPages, pagedHistory,
-      fetchHistory, formatDate, statusText,
-      viewReport, closeGroupReport, deleteReport, startNewReview,
-      searchKeyword, statusFilter, typeFilter,
-      availableContractTypes, filteredHistory,
-    };
+    return { workflow, startNewReview, goLibrary };
   },
 };
 </script>
 
 <style scoped>
 .home-page {
-  height: calc(100vh - 56px);
-  overflow: hidden;
+  min-height: calc(100vh - 56px);
   background: #ffffff;
   color: #111111;
   font-size: 13px;
+  padding-bottom: 48px;
 }
 
 .hero-section {
   position: relative;
-  width: calc(100% - 36px);
-  max-width: 1180px;
-  height: 196px;
-  margin: 12px auto 0;
-  border-radius: 8px;
+  height: 380px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -199,61 +93,57 @@ export default {
 .hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.04));
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0.25));
 }
 
 .hero-content {
   position: relative;
   z-index: 1;
-  max-width: 760px;
-  padding: 22px 28px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
   color: #ffffff;
 }
 
 .eyebrow {
-  margin: 0 0 5px;
-  color: inherit;
-  opacity: 0.66;
+  margin: 0 0 8px;
   font-size: 11px;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
 }
 
-h1, h2, h3, p {
-  letter-spacing: 0;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(26px, 3.4vw, 40px);
-  line-height: 1.08;
-  font-weight: 850;
+.hero-content h1 {
+  margin: 0 0 10px;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.3;
+  max-width: 560px;
 }
 
 .hero-copy {
-  max-width: 620px;
-  margin: 8px 0 14px;
-  color: rgba(255, 255, 255, 0.84);
+  margin: 0 0 22px;
   font-size: 14px;
-  line-height: 1.55;
+  opacity: 0.85;
+  max-width: 480px;
 }
 
-button {
-  border: 0;
-  border-radius: 8px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.hero-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .primary-button,
 .secondary-button {
-  min-height: 34px;
-  padding: 0 13px;
+  height: 40px;
+  padding: 0 22px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  border: 1px solid transparent;
 }
 
 .primary-button {
@@ -262,143 +152,62 @@ button:disabled {
 }
 
 .secondary-button {
-  background: #ffffff;
-  color: #111111;
-  box-shadow: inset 0 0 0 1px #e5e5e5;
+  background: transparent;
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
-.content-grid {
-  height: calc(100vh - 288px);
-  max-width: 1180px;
-  margin: 12px auto 0;
-  padding: 0 18px 12px;
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 12px;
-}
-
-.workflow-panel,
-.history-panel {
-  min-height: 0;
-  border-radius: 8px;
-  padding: 14px;
-  background: #ffffff;
-  box-shadow: inset 0 0 0 1px #e5e5e5, 0 10px 26px rgba(0, 0, 0, 0.04);
+.workflow-panel {
+  max-width: 1080px;
+  margin: 36px auto 0;
+  padding: 0 24px;
 }
 
 .section-head {
-  margin-bottom: 10px;
+  margin-bottom: 18px;
+}
+
+.section-head .eyebrow {
+  color: #888888;
+  opacity: 1;
 }
 
 .section-head h2 {
   margin: 0;
-  font-size: 19px;
-  line-height: 1.24;
-}
-
-.history-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 12px;
+  font-size: 20px;
+  font-weight: 900;
 }
 
 .workflow-list {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
 }
 
 .workflow-item {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 9px;
-  align-items: start;
-  border-radius: 8px;
-  padding: 10px;
+  display: flex;
+  gap: 12px;
+  padding: 18px;
   background: #fafafa;
-  box-shadow: inset 0 0 0 1px #e5e5e5;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+  border-left: 3px solid var(--accent);
 }
 
 .workflow-item span {
-  color: var(--accent);
-  font-size: 12px;
+  font-size: 20px;
   font-weight: 900;
+  color: var(--accent);
 }
 
 .workflow-item h3 {
-  margin: 0 0 3px;
+  margin: 0 0 4px;
   font-size: 14px;
-  line-height: 1.25;
+  font-weight: 800;
 }
 
-.workflow-item p,
-.empty-block {
+.workflow-item p {
   margin: 0;
   color: #666666;
-  line-height: 1.45;
-}
-
-.empty-block {
-  padding: 26px;
-  text-align: center;
-  background: #fafafa;
-  border-radius: 8px;
-}
-
-.empty-block h3 {
-  margin: 0 0 5px;
-  color: #111111;
-  font-size: 16px;
-}
-
-.empty-block.danger {
-  color: #ef4444;
-}
-
-.history-filters {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-
-.history-search-input,
-.history-filter-select {
-  padding: 6px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: 13px;
-  outline: none;
-  background: #fff;
-}
-
-.history-search-input {
-  flex: 1;
-  min-width: 160px;
-}
-
-.history-search-input:focus,
-.history-filter-select:focus {
-  border-color: #3b82f6;
-}
-
-.history-filter-select {
-  cursor: pointer;
-}
-
-@media (max-width: 900px) {
-  .home-page {
-    height: auto;
-    overflow: visible;
-  }
-
-  .content-grid {
-    height: auto;
-    grid-template-columns: 1fr;
-  }
-
-  .hero-section {
-    width: calc(100% - 28px);
-  }
 }
 </style>

@@ -1,52 +1,57 @@
-import FingerprintJS from '@fingerprintjs/fingerprintjs';
 import api from './api';
 
-const USER_ID_KEY = 'user_id';
+const USER_KEY = 'contract_review_user';
 
-let currentUserId = localStorage.getItem(USER_ID_KEY);
+let currentUser = null;
+try {
+    currentUser = JSON.parse(localStorage.getItem(USER_KEY) || 'null');
+} catch {
+    currentUser = null;
+}
 
-/**
- * Identifies the current user using a browser fingerprint.
- * If a user ID is already in localStorage, it's considered valid.
- * Otherwise, it generates a fingerprint, sends it to the backend to get a user ID,
- * and then stores that ID in localStorage.
- * This ensures we only run the identification process once per session/browser.
- */
-export const identifyUser = async () => {
-    if (currentUserId) {
-        console.log(`[User] Found existing User ID: ${currentUserId}`);
-        return parseInt(currentUserId, 10);
-    }
-
-    console.log('[User] No User ID found. Identifying browser...');
-    try {
-        const fp = await FingerprintJS.load();
-        const result = await fp.get();
-        const visitorId = result.visitorId;
-
-        console.log(`[User] Browser fingerprint generated: ${visitorId}`);
-
-        const response = await api.identifyUser({ fingerprintId: visitorId });
-        
-        currentUserId = response.data.userId;
-        localStorage.setItem(USER_ID_KEY, currentUserId);
-        
-        console.log(`[User] Successfully identified. User ID: ${currentUserId}`);
-        
-        return currentUserId;
-    } catch (error) {
-        console.error('[User] Fingerprinting or API identification failed:', error);
-        // In a real app, you might want to handle this more gracefully.
-        // For now, we'll block the user from proceeding without an ID.
-        alert('无法识别用户身份，应用无法继续。请检查网络连接或浏览器设置。');
-        return null;
+const saveUser = (user) => {
+    currentUser = user;
+    if (user) {
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+        localStorage.removeItem(USER_KEY);
     }
 };
 
-/**
- * Gets the current user's ID.
- * @returns {number|null} The current user's ID, or null if not identified.
- */
-export const getUserId = () => {
-    return currentUserId ? parseInt(currentUserId, 10) : null;
-}; 
+/** 用户名密码登录 */
+export const login = async (username, password) => {
+    const response = await api.login({ username, password });
+    const user = {
+        userId: response.data.userId,
+        username: response.data.username,
+        displayName: response.data.displayName,
+        role: response.data.role || 'user',
+    };
+    saveUser(user);
+    return user;
+};
+
+/** 登出 */
+export const logout = () => {
+    saveUser(null);
+};
+
+/** 当前登录用户，未登录返回 null */
+export const getCurrentUser = () => currentUser;
+
+/** 当前用户 ID */
+export const getUserId = () => (currentUser ? currentUser.userId : null);
+
+/** 当前用户角色 */
+export const getRole = () => (currentUser ? currentUser.role : null);
+
+/** 是否已登录 */
+export const isLoggedIn = () => !!currentUser;
+
+/** 是否管理员 */
+export const isAdmin = () => !!currentUser && currentUser.role === 'admin';
+
+/** 兼容旧调用：若已登录直接返回，否则返回 null（由路由守卫跳转登录页） */
+export const identifyUser = async () => {
+    return getUserId();
+};
