@@ -1,5 +1,249 @@
 [
   {
+    "id": "cons_quality_deposit_max_3pct",
+    "template_id": "construction_general",
+    "rule_type": "number_constraint",
+    "description": "工程质量保证金累计扣留比例不得超过工程价款结算总额的3%",
+    "legal_basis": "建设工程质量保证金管理办法第7条",
+    "matcher": {
+      "clause_keywords": ["质量保证金", "质保金", "保修金", "保留金"],
+      "number_field": "比例",
+      "unit": "%"
+    },
+    "constraint": {
+      "op": "<=",
+      "value": 3
+    },
+    "severity": "high",
+    "fix_template": "建议将质量保证金累计扣留比例修改为不超过工程价款结算总额的3%（建设工程质量保证金管理办法第7条）。已缴纳履约保证金的，不得再扣留质量保证金。"
+  },
+  {
+    "id": "cons_bid_bond_max_2pct",
+    "template_id": "construction_general",
+    "rule_type": "number_constraint",
+    "description": "投标保证金不得超过招标项目估算价的2%",
+    "legal_basis": "招标投标法实施条例第26条",
+    "matcher": {
+      "clause_keywords": ["投标保证金", "投标担保"],
+      "number_field": "比例",
+      "unit": "%"
+    },
+    "constraint": {
+      "op": "<=",
+      "value": 2
+    },
+    "severity": "high",
+    "fix_template": "投标保证金不得超过招标项目估算价的2%（招标投标法实施条例第26条），超出部分应予调整。"
+  },
+  {
+    "id": "cons_performance_bond_max_10pct",
+    "template_id": "construction_general",
+    "rule_type": "number_constraint",
+    "description": "履约保证金不得超过中标合同金额的10%",
+    "legal_basis": "招标投标法实施条例第58条",
+    "matcher": {
+      "clause_keywords": ["履约保证金", "履约担保"],
+      "number_field": "比例",
+      "unit": "%"
+    },
+    "constraint": {
+      "op": "<=",
+      "value": 10
+    },
+    "severity": "high",
+    "fix_template": "履约保证金不得超过中标合同金额的10%（招标投标法实施条例第58条），建议相应调低比例。"
+  },
+  {
+    "id": "cons_prepayment_range",
+    "template_id": "construction_general",
+    "rule_type": "number_constraint",
+    "description": "工程预付款一般不低于签约合同价10%、不高于30%",
+    "legal_basis": "建设工程价款结算暂行办法（财建〔2004〕369号）",
+    "matcher": {
+      "clause_keywords": ["预付款", "工程预付款"],
+      "number_field": "比例",
+      "unit": "%"
+    },
+    "constraint": {
+      "op": "between",
+      "min": 10,
+      "max": 30
+    },
+    "severity": "medium",
+    "fix_template": "工程预付款比例一般不低于签约合同价（扣除暂列金额）的10%、不高于30%，建议在此区间内约定，并明确扣回方式。"
+  },
+  {
+    "id": "cons_defect_liability_max_24m",
+    "template_id": "construction_general",
+    "rule_type": "number_constraint",
+    "description": "缺陷责任期一般为1年，最长不超过24个月",
+    "legal_basis": "建设工程质量保证金管理办法第2条",
+    "matcher": {
+      "clause_keywords": ["缺陷责任期"],
+      "number_field": "期限",
+      "unit": "月"
+    },
+    "constraint": {
+      "op": "<=",
+      "value": 24
+    },
+    "severity": "high",
+    "fix_template": "缺陷责任期一般为1年，最长不超过24个月（建设工程质量保证金管理办法第2条），超出部分无效，到期后应返还质量保证金。"
+  },
+  {
+    "id": "cons_wage_payment_monthly",
+    "template_id": "construction_labor",
+    "rule_type": "number_constraint",
+    "description": "人工费用拨付周期不得超过1个月",
+    "legal_basis": "保障农民工工资支付条例第24条",
+    "matcher": {
+      "clause_keywords": ["人工费用", "农民工工资", "工资支付", "工资拨付"],
+      "number_field": "周期",
+      "unit": "月"
+    },
+    "constraint": {
+      "op": "<=",
+      "value": 1
+    },
+    "severity": "high",
+    "fix_template": "建设单位向农民工工资专用账户拨付人工费的周期不得超过1个月（保障农民工工资支付条例第24条），工资应按月足额支付。"
+  },
+  {
+    "id": "cons_no_illegal_subcontract",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "禁止转包、违法分包，主体结构不得分包",
+    "legal_basis": "建筑法第28条、第29条；民法典第791条",
+    "matcher": {
+      "clause_keywords": ["转包", "分包", "主体结构", "肢解发包"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "承包人不得将其承包的全部建设工程转包给第三人或肢解后分包；主体结构施工必须由承包人自行完成，违法分包、转包的合同无效（建筑法第28、29条，民法典第791条）。"
+  },
+  {
+    "id": "cons_no_qualification_lending",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "禁止借用资质（挂靠）承揽工程",
+    "legal_basis": "建筑法第26条；建工司法解释一第1条",
+    "matcher": {
+      "clause_keywords": ["借用资质", "挂靠", "资质借用", "名义承包"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "禁止以任何形式借用资质（挂靠）承揽工程，挂靠施工合同无效，且双方均面临行政处罚风险（建筑法第26条、第66条）。"
+  },
+  {
+    "id": "cons_bid_contract_consistency",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "中标后不得订立背离中标合同实质性内容的协议（黑白合同）",
+    "legal_basis": "招标投标法第46条；建工司法解释一第2条",
+    "matcher": {
+      "clause_keywords": ["补充协议", "让利", "阴阳合同", "另行约定", "实质性变更"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "招标人和中标人不得再行订立背离合同实质性内容的其他协议；另行签订的让利、压价等背离中标合同实质性内容的协议无效，以中标合同为结算依据（招标投标法第46条）。"
+  },
+  {
+    "id": "cons_min_warranty_period",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "建设工程最低保修期限不得低于法定标准",
+    "legal_basis": "建设工程质量管理条例第40条",
+    "matcher": {
+      "clause_keywords": ["保修期", "保修期限", "质量保修"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "法定最低保修期限：地基基础和主体结构为设计文件规定的合理使用年限；屋面防水、有防水要求的卫生间和外墙防渗漏为5年；供热供冷系统为2个采暖期、供冷期；电气管线、给排水管道、设备安装和装修工程为2年。约定低于该标准的无效（建设工程质量管理条例第40条）。"
+  },
+  {
+    "id": "cons_priority_right_18m",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "建设工程价款优先受偿权行使期限为18个月",
+    "legal_basis": "民法典第807条；建工司法解释一第41条",
+    "matcher": {
+      "clause_keywords": ["优先受偿权", "工程价款优先", "放弃优先受偿"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "承包人行使建设工程价款优先受偿权的期限为自发包人应当给付价款之日起18个月。约定放弃或限制优先受偿权损害建筑工人利益的无效。"
+  },
+  {
+    "id": "cons_safety_fee_non_competitive",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "安全文明施工费为不可竞争费用，不得作为让利条件",
+    "legal_basis": "建设工程工程量清单计价规范GB50500；建筑法第44条",
+    "matcher": {
+      "clause_keywords": ["安全文明施工费", "安全防护费", "文明施工费"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "安全文明施工费属于不可竞争费用，不得下浮让利，且应专款专用；发包人应按规定比例预付安全防护、文明施工措施费。"
+  },
+  {
+    "id": "cons_back_to_back_payment",
+    "template_id": "construction_subcontract",
+    "rule_type": "advisory",
+    "description": "背靠背付款条款对中小企业的效力受限",
+    "legal_basis": "保障中小企业款项支付条例；最高法院相关批复",
+    "matcher": {
+      "clause_keywords": ["建设单位付款后", "收到业主款项后", "以业主付款为前提", "背靠背"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "high",
+    "fix_template": "以收到建设单位付款作为向分包人付款前提的背靠背条款，对中小企业分包人不发生效力或可被调整，建议改为明确付款时限。"
+  },
+  {
+    "id": "cons_delay_penalty_cap",
+    "template_id": "construction_general",
+    "rule_type": "advisory",
+    "description": "工期违约金宜设置合理上限且与奖励对等",
+    "legal_basis": "民法典第585条",
+    "matcher": {
+      "clause_keywords": ["工期违约金", "逾期竣工", "延误违约金", "误期赔偿"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "medium",
+    "fix_template": "建议工期违约金设置累计上限（如不超过合同价款的3%-5%），并与工期提前奖励对等；违约金过分高于实际损失的，可请求法院调减（民法典第585条）。"
+  },
+  {
+    "id": "cons_material_price_adjust",
+    "template_id": "construction_materials",
+    "rule_type": "advisory",
+    "description": "大宗材料建议约定价格调差机制",
+    "legal_basis": "民法典第533条（情势变更）；清单计价规范",
+    "matcher": {
+      "clause_keywords": ["固定单价", "固定总价", "价格不调整", "一次性包死"],
+      "number_field": "",
+      "unit": ""
+    },
+    "constraint": {},
+    "severity": "medium",
+    "fix_template": "钢材、水泥、商品混凝土等大宗材料价格波动大，建议约定调差机制（如价格波动超过±5%时按造价信息发布价调整），完全包死价在极端行情下存在被调整或履约违约风险。"
+  },
+  {
     "id": "labor_compete_max_2y",
     "template_id": "labor",
     "rule_type": "number_constraint",
@@ -49,42 +293,5 @@
     "constraint": {},
     "severity": "medium",
     "fix_template": "用人单位仅可对服务期与竞业限制约定违约金，其他情形约定的违约金条款可能无效（劳动合同法第25条）。"
-  },
-  {
-    "id": "loan_rate_lpr_4x",
-    "template_id": "loan",
-    "rule_type": "number_constraint",
-    "description": "借款利率不得超过LPR的四倍",
-    "legal_basis": "最高人民法院关于审理民间借贷案件适用法律若干问题的规定",
-    "matcher": {
-      "clause_keywords": ["利率", "利息", "年利率", "月利率"],
-      "number_field": "利率",
-      "unit": "%"
-    },
-    "constraint": {
-      "op": "<=",
-      "value_expr": "lpr_4x",
-      "value_expr_deps": ["lpr_rate"]
-    },
-    "severity": "high",
-    "fix_template": "建议将借款利率调整为不超过合同成立时一年期LPR的四倍（当前约13.8%），超出部分不受法律保护。"
-  },
-  {
-    "id": "lease_term_max_20y",
-    "template_id": "lease",
-    "rule_type": "number_constraint",
-    "description": "租赁期限不得超过20年",
-    "legal_basis": "民法典第705条",
-    "matcher": {
-      "clause_keywords": ["租赁期限", "租期", "租赁期"],
-      "number_field": "期限",
-      "unit": "年"
-    },
-    "constraint": {
-      "op": "<=",
-      "value": 20
-    },
-    "severity": "high",
-    "fix_template": "建议将租赁期限修改为不超过20年，超过20年的部分无效（民法典第705条）。"
   }
 ]
