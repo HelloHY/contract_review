@@ -1,383 +1,266 @@
-# Contract Review AI
+# 建筑行业合同审核 AI 平台
 
-> 基于 AI 的中文合同审查与知识库增强平台，支持合同风险分析、OnlyOffice 在线审阅、法律知识检索与智能问答。
+> 面向建设工程领域的本地化合同审查平台，基于 Ollama + 通义千问（Qwen）实现纯本地 AI 推理，无需任何外部 API。内置建筑行业专用法律法规库、审查模板与规则，前端将文件库与合同审核界面分离，配套 admin 角色权限体系与路由守卫。
 
-如需帮助，可微信联系
+---
 
-<img width="300" height="100" alt="wx" src="https://github.com/user-attachments/assets/fe7f2d59-5032-4ab5-a7d7-82bffcec1041" />
+## ✨ 核心特性
 
-## ✨ Features
+### 行业适配
+- 内置 **9 部建筑行业核心法律法规**（建筑法、民法典·建设工程合同章、建工司法解释一、招标投标法及实施条例、建设工程质量管理条例、安全生产管理条例、价款结算办法、质量保证金管理办法、农民工工资支付条例）
+- **11 套建筑行业专用审查模板** + **16 条专项审查规则**
+- 审查立场、违约成本分析、法条引用与时效性标注
 
-- 📄 合同上传与 AI 预分析
-  - 支持 DOCX / PDF 上传，自动检测扫描件并提示
-  - 自动识别合同类型、主体信息与审查范围
-  - 异步分析任务，Socket.IO 实时推送进度与 ETA
-- ⚖️ 合同风险审查
-  - 输出风险点、修改建议、相关法条与审查理由
-  - 风险仪表盘：整体风险等级 + 高/中/低分级筛选排序
-  - 违约成本分析与法律依据引用（citations）渲染
-  - 专项审查持久化，支持历史记录查看与恢复
-  - 支持关联裁判文书增强分析
-  - 谈判博弈模拟：对修改建议反向推演，输出对方反驳 / 折中方案 / 谈判话术，已推演建议按钮显绿色勾标记
-  - 行业标准对比：审查时自动检索标准条款库，对核心条款输出差异对比
-  - 导出审查报告（HTML / PDF / Word），含风险证据、法条时效、标准对比、增量审查记录
-- 📝 OnlyOffice 在线协同编辑
-  - 文档内精准定位条款
-  - 添加批注与修改建议
-  - 一键采纳建议并高亮变更内容
-  - 版本管理：任意两版本对比、缺失条款一键补全
-- 📚 法律知识库
-  - 支持法律法规、裁判文书、审查规则导入
-  - 支持向量检索、删除与模板下载
-  - 行业标准条款库：公共库 + 私有库，适用合同类型多选，审查时自动对比
-  - 法律时效性监控：标注现行 / 已修订 / 已废止，附替代版本提示
-- 🏢 企业核验
-  - 企查查 OpenAPI v2（AppKey + SecretKey + MD5 签名）
-  - 天眼查 Bearer 鉴权
-  - 无 Token 时自动回退到网页搜索，提取法定代表人 / 统一社会信用代码 / 风险关键词
-- 📋 审查模板管理
-  - 在线 CRUD，支持合同类型关键词、审查点、核心目的、报告章节配置
-  - 版本快照与回滚，系统模板不可删除
-- 🤖 智能问答
-  - SSE 流式输出
-  - 携带上下文会话历史，按合同隔离问答记录
-  - 支持知识库检索 + 受控联网搜索（含广告过滤与重试）
-- 📋 审查记录管理
-  - 历史记录搜索与多维度筛选（状态、合同类型）
-  - 展示合同类型、审查立场与风险点统计
-- 🧠 向量检索与 AI 能力
-  - Embedding / Rerank
-  - Milvus 向量数据库
-  - OpenAI Compatible API
-  - 检索优化：候选集最小 48 条 + 单 query 降级补充 + ngram 二次切分提升短关键词召回
-  - 分通道检索：通道 A（审查维度）+ 通道 B（合同内容），配额融合 + 软阈值
-  - 谈判博弈模拟：LLM 单次反向论证，推断对方立场与折中方案
-  - 视觉模型印章分析：PS 疑似 / 位置合规 / 印章类型识别
-- 🐳 Docker 一键部署
-  - PostgreSQL
-  - Milvus
-  - MinIO
-  - OnlyOffice
+### 纯本地 AI（无外部 API）
+- 大模型：**Ollama + Qwen2.5:14b**（OpenAI 兼容接口，显存不足可降级为 qwen2.5:7b）
+- 向量化：**nomic-embed-text**（768 维）
+- 视觉模型印章分析：未配置时自动回退到 tesseract.js OCR
+- RAG 检索：Milvus 向量库 + 双通道检索（审查维度 + 合同内容）
 
-***
+### 前端界面（独立分离）
+- **文件库**（`/library`）：合同列表、搜索筛选、分页、删除、继续审查
+- **合同审核**（`/review`）：风险仪表盘、修改建议、法条引用、批量导出
+- **智能问答**（`/qna`）：SSE 流式输出，按合同隔离上下文
+- **首页**（`/`）：上传与预分析入口
 
-## 🖼️ Demo
+### 用户权限体系（仅 admin）
+- 登录页（`/login`）+ 路由守卫（`requiresAuth` / `requiresAdmin` / `guest` 三级元信息）
+- 默认账号：**admin / admin123**（可用环境变量 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 覆盖）
+- 用户管理页（`/users`）+ 设置页（`/settings`）：仅 admin 可见，支持角色切换
+- 登录态写入 localStorage，导航栏按角色动态显示
 
-| 首页             | 合同分析           |
-| -------------- | -------------- |
-| ![](img/1.jpg) | ![](img/2.jpg) |
+### OnlyOffice 协同编辑
+- 文档内精准定位条款，添加批注与修改建议
+- 一键采纳建议并高亮变更，版本对比与缺失条款补全
 
-| 风险审查           | 修改建议           |
-| -------------- | -------------- |
-| ![](img/3.jpg) | ![](img/5.jpg) |
+### 基础设施（Docker 一键部署）
+- PostgreSQL 16
+- Milvus 2.4.4 + etcd + MinIO
+- OnlyOffice Document Server 9.3
 
-| 知识库             | 智能问答           |
-| --------------- | -------------- |
-| ![](img/10.jpg) | ![](img/9.jpg) |
+---
 
-更多演示图：
+## 🏗️ 技术栈
 
-![](img/7.jpg)
+### 前端
+- Vue 3 + Vite 6
+- Element Plus + Tailwind CSS
+- OnlyOffice Document Editor (Vue)
+- Vue Router 4（含路由守卫）
 
-![](img/12.jpg)
-
-![](img/6.jpg)
-
-![](img/4.jpg)
-
-![](img/11.jpg)
-
-***
-
-## 🏗️ Tech Stack
-
-### Frontend
-
-- Vue 3
-- Vite
-- Element Plus
-- Tailwind CSS
-- OnlyOffice Document Editor
-
-### Backend
-
-- Node.js
-- Express
-- Knex
-- PostgreSQL
-- Socket.IO
+### 后端
+- Node.js + Express 4
+- Knex 3 + PostgreSQL（pg）
+- Socket.IO（实时进度推送）
 
 ### AI / RAG
+- Ollama（OpenAI 兼容接口）
+- Qwen2.5:14b / nomic-embed-text
+- Milvus 向量数据库
+- 法律 Markdown 解析 + 裁判文书 JSON 解析
+- tesseract.js OCR（印章与签名分析回退方案）
 
-- OpenAI Compatible Chat API
-- Embedding
-- Rerank
-- Milvus
-- 法律 Markdown 解析
-- 裁判文书 JSON 解析
-- 谈判博弈模拟（LLM 反向论证）
-- 视觉模型印章分析
-- 企查查 / 天眼查企业核验
-
-### Infrastructure
-
+### 基础设施
 - Docker Compose
-- PostgreSQL
-- Milvus
-- MinIO
-- etcd
-- OnlyOffice
+- PostgreSQL / Milvus / MinIO / etcd / OnlyOffice
 
-***
+---
 
-## 📁 Project Structure
+## 📁 项目结构
 
 ```text
 .
 ├── backend/
-│   ├── data/              # 法律法规、裁判文书、模板
-│   ├── routes/            # API 路由（contracts / knowledge / standards / ...）
-│   ├── services/          # AI / 向量库 / 检索 / 谈判模拟 / 企业核验
-│   └── uploads/           # 上传目录（已忽略）
+│   ├── data/
+│   │   ├── laws/建设工程/        # 9 部建筑行业法律法规（Markdown）
+│   │   ├── candidate_55192/     # 裁判文书样例
+│   │   ├── reviewTemplates.json # 11 套建筑行业审查模板
+│   │   └── reviewRules.json     # 16 条建筑行业审查规则
+│   ├── routes/                  # contracts / qa / users / knowledge / templates / standards
+│   ├── services/                # AI / 向量库 / 检索 / 企业核验
+│   ├── database.js / database-check.js
+│   └── .env                     # Ollama + 数据库 + OnlyOffice 配置
 │
 ├── frontend/
-│   ├── src/               # Vue 源码
-│   └── dist/              # 构建产物（已忽略）
+│   └── src/
+│       ├── views/
+│       │   ├── Home.vue         # 上传与预分析入口（requiresAuth）
+│       │   ├── Library.vue      # 文件库（requiresAuth）
+│       │   ├── Review.vue       # 合同审核（requiresAuth）
+│       │   ├── QnA.vue          # 智能问答（requiresAuth）
+│       │   ├── Settings.vue     # 设置（requiresAdmin）
+│       │   ├── Users.vue        # 用户管理（requiresAdmin）
+│       │   └── Login.vue        # 登录（guest）
+│       ├── router/index.js      # 三级路由守卫
+│       └── user.js              # 登录态 / 角色 / 登出
 │
-├── data/
-│   ├── postgres/          # PostgreSQL 数据目录
-│   ├── milvus/            # Milvus / MinIO / etcd
-│   └── onlyoffice/        # OnlyOffice 数据目录
-│
+├── data/                        # Docker 持久化目录（已忽略）
 ├── docker-compose.yml
 └── README.md
 ```
 
-***
+---
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### 1. Clone Repository
+### 0. 前置要求
 
-```bash
-git clone https://github.com/xiaodingfeng/contract-review
+| 依赖 | 版本/说明 |
+|---|---|
+| Ollama | 用于本地大模型推理，安装见 https://ollama.com/download/windows |
+| Docker Desktop | 用于启动 PostgreSQL / Milvus / OnlyOffice |
+| Node.js | LTS 版本（建议 ≥ 20） |
+| GPU | 建议显存 ≥ 16GB（14b 模型）；显存不足降级 qwen2.5:7b |
+| 可用磁盘 | ≥ 30GB（模型约 10GB + Docker 数据 + 上传文件） |
 
-cd contract-review
-```
-
-***
-
-### 2. Install Dependencies
-
-```bash
-# backend
-cd backend
-npm install
-
-# frontend
-cd ../frontend
-npm install
-```
-
-***
-
-### 3. Configure Environment Variables
+### 1. 克隆仓库
 
 ```bash
-# backend
-copy .env.example .env
-
-# frontend
-copy .env.example .env
+git clone https://github.com/HelloHY/contract_review.git
+cd contract_review
 ```
 
-### Backend Required Variables
+> 默认分支为 `main`。
 
-```env
-LLM_API_KEY=
-EMBEDDING_API_KEY=
-ONLYOFFICE_JWT_SECRET=
+### 2. 安装并配置 Ollama 本地模型
+
+```powershell
+# 安装 Ollama 后，拉取模型（建议先设置 OLLAMA_MODELS 指向 SSD 大盘）
+[Environment]::SetEnvironmentVariable("OLLAMA_MODELS", "F:\ollama\models", "User")
+
+# 重启 PowerShell 让环境变量生效，然后：
+ollama pull qwen2.5:14b        # 主模型，约 9GB
+ollama pull nomic-embed-text   # 向量化模型，约 270MB
 ```
 
-同时需要配置：
+显存不足时把 `backend/.env` 里的 `LLM_MODEL` 改为 `qwen2.5:7b`，并 `ollama pull qwen2.5:7b`。
 
-- PostgreSQL
-- Milvus
-- OnlyOffice
-
-***
-
-### 4. Start Infrastructure Services
+### 3. 启动基础设施服务
 
 ```bash
 docker compose up -d
 ```
 
-***
+将启动：PostgreSQL（5432）、OnlyOffice（8081）、Milvus（19530）+ etcd + MinIO（9000）。
 
-### 5. Start Backend
+### 4. 配置后端环境变量
+
+`backend/.env` 已配置好 Ollama 本地接口，关键项：
+
+```env
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_API_KEY=ollama
+LLM_MODEL=qwen2.5:14b
+EMBEDDING_BASE_URL=http://localhost:11434/v1
+EMBEDDING_API_KEY=ollama
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIM=768
+RERANK_MODEL=                  # 留空跳过 rerank
+DATABASE_URL=postgres://contract_review:contract_review@127.0.0.1:5432/contract_review
+ONLYOFFICE_URL=http://localhost:8081
+```
+
+如需修改默认 admin 账号：
+
+```env
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin123
+```
+
+### 5. 安装后端依赖并启动
 
 ```bash
 cd backend
-
+npm install
 npm run dev
 ```
 
-首次启动会：
+首次启动会自动：
+- 重建数据库表结构（含 users 表的 username / password_hash / role 字段）
+- 创建默认 admin 账号
+- Seed 建筑行业法律法规（9 部）到向量库
+- Seed 11 套审查模板与 16 条审查规则
 
-- 初始化数据库
-
-***
-
-### 6. Start Frontend
+### 6. 安装前端依赖并启动
 
 ```bash
 cd frontend
-
+npm install
 npm run dev
 ```
 
-默认访问地址：
+访问地址：**http://localhost:5173**
 
-```text
-http://localhost:8080
-```
+登录账号：**admin / admin123**
 
-***
+---
 
-## ⚙️ Environment Variables
+## ⚙️ 关键环境变量
 
 ### Backend
 
-| Variable                    | Description           |
-| --------------------------- | --------------------- |
-| `LLM_BASE_URL`              | LLM API 地址            |
-| `LLM_API_KEY`               | LLM API Key           |
-| `LLM_MODEL`                 | 聊天模型                  |
-| `EMBEDDING_BASE_URL`        | Embedding API         |
-| `EMBEDDING_MODEL`           | 向量模型                  |
-| `RERANK_MODEL`              | 重排模型                  |
-| `DATABASE_URL`              | PostgreSQL 连接         |
-| `VECTOR_STORE`              | 向量数据库类型               |
-| `MILVUS_*`                  | Milvus 配置             |
-| `ONLYOFFICE_URL`            | OnlyOffice 地址         |
-| `ONLYOFFICE_JWT_SECRET`     | OnlyOffice JWT Secret |
-| `VISION_MODEL_NAME`         | 视觉模型（印章分析，可选）         |
-| `COMPANY_API_TOKEN`         | 企业核验 AppKey（企查查）      |
-| `COMPANY_API_SECRET`        | 企业核验 SecretKey（企查查）   |
-| `KNOWLEDGE_SCORE_THRESHOLD` | 知识库 rerank 阈值（默认 0.6） |
+| 变量 | 说明 |
+|---|---|
+| `PORT` | 后端监听端口（默认 3000） |
+| `LLM_BASE_URL` | Ollama OpenAI 兼容接口地址 |
+| `LLM_MODEL` | 主模型名（默认 qwen2.5:14b） |
+| `EMBEDDING_MODEL` | 向量化模型（默认 nomic-embed-text） |
+| `EMBEDDING_DIM` | 向量维度（必须与模型一致，768） |
+| `RERANK_MODEL` | 重排模型，留空则跳过 rerank |
+| `DATABASE_URL` | PostgreSQL 连接串 |
+| `MILVUS_ADDRESS` | Milvus 地址（默认 localhost:19530） |
+| `ONLYOFFICE_URL` / `ONLYOFFICE_JWT_SECRET` | OnlyOffice 配置 |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 默认 admin 账号覆盖 |
+| `KNOWLEDGE_SEED_TYPES` | 启动时种子数据类型（law,case） |
+| `LAW_SEED_DIRS` | 法律种子目录（留空遍历整个 data/laws） |
+| `VISION_MODEL_NAME` | 视觉模型（印章分析，留空回退 OCR） |
+| `COMPANY_API_PROVIDER` | 企业核验数据源（默认 web_search） |
 
 ### Frontend
 
-| Variable                   | Description   |
-| -------------------------- | ------------- |
-| `VITE_APP_BACKEND_API_URL` | 后端 API 地址     |
-| `VITE_APP_ONLYOFFICE_URL`  | OnlyOffice 地址 |
+| 变量 | 说明 |
+|---|---|
+| `VITE_APP_BACKEND_API_URL` | 后端 API 地址（不带 /api） |
+| `VITE_APP_ONLYOFFICE_URL` | 浏览器可访问的 OnlyOffice 地址 |
 
-***
+---
 
-## 📚 Knowledge Base Initialization
+## � 安全注意事项
 
-默认配置：
+- **不要提交**：`.env`、API Key、数据库密码、上传文件、Docker 数据目录
+- 默认 admin 账号 `admin/admin123` 仅供本地测试，**生产部署务必修改**（设置环境变量或登录后到用户管理页修改）
+- 联网搜索仅用于公开信息检索，涉及敏感内容时自动拒绝
+- 数据库仅保存路径与元数据，不保存文件二进制内容
 
-```env
-KNOWLEDGE_SEED_TYPES=law,case
-LAW_SEED_DIRS=社会法,民法典
-CASE_SEED_DIR=data/candidate_55192
-CASE_SEED_LIMIT=10
-```
+---
 
-### 仅初始化法律法规
-
-```env
-KNOWLEDGE_SEED_TYPES=law
-```
-
-### 仅初始化裁判文书
-
-```env
-KNOWLEDGE_SEED_TYPES=case
-```
-
-### 初始化指定法律目录
-
-```env
-LAW_SEED_DIRS=经济法,行政法
-```
-
-***
-
-## 🧩 Built-in Dataset
-
-默认仓库仅包含部分法律法规与裁判文书数据。
-
-完整数据请额外拉取：
-
-```bash
-git clone https://github.com/xiaodingfeng/contract-review-laws.git
-```
-
-示例合同文件：
-
-```text
-offer-demo.docx
-```
-
-***
-
-## 🛠️ Build
+## 🛠️ 生产构建
 
 ```bash
 cd frontend
-
 npm run build
 ```
 
-当前构建配置：
+构建产物输出到 `frontend/dist/`，可直接由 Nginx 或后端静态目录托管。
 
-- Vite ESM
-- 路由懒加载
-- Rollup Manual Chunks
-- 第三方依赖拆包优化
+---
 
-***
+## � 路由与权限一览
 
-## 🔐 Security Notes
+| 路径 | 页面 | 权限要求 |
+|---|---|---|
+| `/login` | 登录 | 仅未登录可访问 |
+| `/` | 首页（上传入口） | 登录 |
+| `/library` | 文件库 | 登录 |
+| `/review` | 合同审核 | 登录 |
+| `/qna` | 智能问答 | 登录 |
+| `/settings` | 系统设置 | 仅 admin |
+| `/users` | 用户管理 | 仅 admin |
 
-- 不要提交：
-  - `.env`
-  - API Key
-  - 数据库密码
-  - 上传文件
-  - Docker 数据目录
-- 联网搜索：
-  - 仅用于公开信息检索
-  - 涉及敏感内容时自动拒绝
-- 数据库存储：
-  - 仅保存路径与元数据
-  - 不保存文件二进制内容
+路由守卫实现见 `frontend/src/router/index.js`：未登录访问受保护页面自动跳转登录并携带 `redirect` 参数。
 
-***
+---
 
 ## 📄 License
 
 MIT
-
-***
-
-## ⭐ Acknowledgements
-
-- OnlyOffice
-- Milvus
-- OpenAI
-- Vue.js
-- PostgreSQL
-- Element Plus
-
-***
-
-## ⭐ Star History
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/chart?repos=xiaodingfeng/contract-review&type=date&legend=top-left&sealed_token=ss0QmgJTyGQ2QoMe5CY8kK6ncujDCEClp5r_2zWZOBhfAziQm6MlW8IpWrv4QkylbQ9Bqb0168_b2qgMTOplmjbW2zvx3v6u1nsZL1XjmOILDrQRhW1lUQ)](https://www.star-history.com/?repos=xiaodingfeng%2Fcontract-review&type=date&legend=top-left)
