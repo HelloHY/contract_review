@@ -37,3 +37,7 @@ storage/
 
 # OnlyOffice cache
 onlyoffice-cache/
+
+# PDF OCR 运行时产物（测试脚本生成的样本与缓存）
+*.ocr.txt
+backend/scripts/sample-scanned.pdf

@@ -15,6 +15,7 @@
 - 大模型：**Ollama + Qwen2.5:14b**（OpenAI 兼容接口，显存不足可降级为 qwen2.5:7b）
 - 向量化：**nomic-embed-text**（768 维）
 - 视觉模型印章分析：未配置时自动回退到 tesseract.js OCR
+- **扫描件 PDF 本地 OCR**：上传的图像型 PDF 自动检测并走 tesseract.js 中文 OCR 提取文字，无需外部 API（每页约 5-15 秒，关键数字建议人工复核）
 - RAG 检索：Milvus 向量库 + 双通道检索（审查维度 + 合同内容）
 
 ### 前端界面（独立分离）
@@ -35,7 +36,7 @@
 
 ### 基础设施（Docker 一键部署）
 - PostgreSQL 16
-- Milvus 2.4.4 + etcd + MinIO
+- Milvus 2.4.4 + etcd + RustFS
 - OnlyOffice Document Server 9.3
 
 ---
@@ -214,6 +215,11 @@ npm run dev
 | `KNOWLEDGE_SEED_TYPES` | 启动时种子数据类型（law,case） |
 | `LAW_SEED_DIRS` | 法律种子目录（留空遍历整个 data/laws） |
 | `VISION_MODEL_NAME` | 视觉模型（印章分析，留空回退 OCR） |
+| `PDF_OCR_ENABLED` | 扫描件 PDF 自动 OCR 开关（默认 true） |
+| `PDF_OCR_MAX_PAGES` | 扫描件最多 OCR 页数（默认 30，超出截断） |
+| `PDF_OCR_SCALE` | 渲染缩放倍数（默认 2.5≈180DPI，精度不足可调 3.0） |
+| `PDF_OCR_LANG` | OCR 语言包（默认 chi_sim+eng） |
+| `TESSDATA_DIR` | 语言包目录（默认 data/tessdata，已随项目分发 tessdata_fast） |
 | `COMPANY_API_PROVIDER` | 企业核验数据源（默认 web_search） |
 
 ### Frontend

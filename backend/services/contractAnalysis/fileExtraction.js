@@ -35,7 +35,14 @@ const detectScannedPdf = (pdfData) => {
     };
 };
 
-const extractTextFromFile = async (filePath) => {
+/**
+ * 从文件中提取文本
+ * @param {string} filePath 文件路径
+ * @param {object} [options]
+ * @param {boolean} [options.ocrFallback] 检测到扫描件 PDF 时是否自动走本地 OCR（默认 false，保持原报错行为）
+ * @param {(info: {page:number, totalPages:number}) => void} [options.onProgress] OCR 逐页进度回调
+ */
+const extractTextFromFile = async (filePath, { onProgress = null, ocrFallback = false } = {}) => {
     const ext = path.extname(filePath).toLowerCase();
     if (ext === '.docx') {
         const { value } = await mammoth.extractRawText({ path: filePath });
@@ -50,6 +57,36 @@ const extractTextFromFile = async (filePath) => {
         const data = await pdf(fs.readFileSync(filePath));
         const scanInfo = detectScannedPdf(data);
         if (scanInfo.isScanned || !data.text || !data.text.trim()) {
+            // 扫描件兜底：调用方显式开启且 OCR 未禁用时，自动走本地 OCR
+            if (ocrFallback && process.env.PDF_OCR_ENABLED !== 'false') {
+                // mtime 缓存：避免 pre-analyze + analyze 对同一份扫描件重复 OCR
+                const cachePath = `${filePath}.ocr.txt`;
+                try {
+                    if (fs.existsSync(cachePath)) {
+                        const cacheStat = fs.statSync(cachePath);
+                        const fileStat = fs.statSync(filePath);
+                        if (cacheStat.mtimeMs >= fileStat.mtimeMs) {
+                            const cached = fs.readFileSync(cachePath, 'utf8');
+                            if (cached.trim()) return cached;
+                        }
+                    }
+                    // 惰性加载，避免原生依赖不可用时影响主流程启动
+                    const { extractTextFromScannedPdf } = require('./pdfOcr');
+                    const ocrResult = await extractTextFromScannedPdf(filePath, { onProgress });
+                    if (ocrResult.text && ocrResult.text.trim()) {
+                        const note = ocrResult.truncated ? `（仅识别前 ${ocrResult.ocrPages}/${ocrResult.pageCount} 页）` : '';
+                        const finalText = `[OCR 识别文本，关键数字请人工复核${note}]\n${ocrResult.text}`;
+                        try { fs.writeFileSync(cachePath, finalText, 'utf8'); } catch { /* 缓存写入失败不阻断 */ }
+                        return finalText;
+                    }
+                } catch (ocrError) {
+                    console.error('[OCR] 扫描件识别失败:', ocrError.message);
+                }
+                const err = new Error('该 PDF 为扫描件，OCR 未能识别出有效文本。请检查扫描件清晰度，或上传可复制的文字版 PDF。');
+                err.code = 'SCANNED_PDF';
+                err.scanInfo = scanInfo;
+                throw err;
+            }
             const err = new Error('该 PDF 疑似扫描件（图像型），无法提取文本内容。请上传可复制的文字版 PDF，或先用 OCR 工具转换为文字版后再上传。');
             err.code = 'SCANNED_PDF';
             err.scanInfo = scanInfo;

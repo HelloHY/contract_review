@@ -40,7 +40,17 @@ module.exports = function (router) {
 
             let plainText;
             try {
-                plainText = await extractTextFromFile(contract.storage_path);
+                plainText = await extractTextFromFile(contract.storage_path, {
+                    ocrFallback: true,
+                    onProgress: ({ page, totalPages }) => {
+                        // 预分析阶段扫描件 OCR 逐页进度（经 Socket.IO 实时推送）
+                        emitAnalysisProgress(req, contractId, {
+                            step: 'pre_analysis',
+                            status: 'running',
+                            message: `检测到扫描件，OCR 识别中：第 ${page}/${totalPages} 页（每页约 5-15 秒）...`,
+                        });
+                    },
+                });
             } catch (extractError) {
                 if (extractError.code === 'SCANNED_PDF') {
                     return res.status(422).json({

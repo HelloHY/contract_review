@@ -20,7 +20,7 @@
             <span class="font-semibold text-primary">点击上传</span>
             <p class="pl-1">或将文件拖到此处</p>
           </div>
-          <p class="text-xs leading-5 text-gray-500">支持 .docx 和 .pdf 格式（PDF 需为可复制的文字版，不支持扫描件）</p>
+          <p class="text-xs leading-5 text-gray-500">支持 .docx 和 .pdf 格式（扫描件将自动本地 OCR 识别，每页约 5-15 秒，耗时较长）</p>
         </div>
       </el-upload>
     </div>

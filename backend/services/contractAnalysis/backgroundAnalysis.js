@@ -44,7 +44,23 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
         await emitAnalysisProgress(null, contractId, { step: 'extract_text', status: 'running', message: '正在提取合同正文...' });
         let plainText;
         try {
-            plainText = await extractTextFromFile(contract.storage_path);
+            plainText = await extractTextFromFile(contract.storage_path, {
+                ocrFallback: true,
+                onProgress: ({ page, totalPages }) => {
+                    // 扫描件 OCR 首页时动态上调 ETA（复用长合同动态 ETA 模式）
+                    if (page === 1) {
+                        const perPage = Number(process.env.PDF_OCR_SECONDS_PER_PAGE || 10);
+                        updateAnalysisJob(contractId, { totalEstSeconds: TOTAL_EST_SECONDS + totalPages * perPage });
+                    }
+                    // 裸发 socket 跳过每页 DB 写；前端 LoadingOverlay 直接渲染 message
+                    getIoInstance()?.to(`contract-${contractId}`).emit('analysis-progress', {
+                        contractId: Number(contractId),
+                        step: 'extract_text',
+                        status: 'running',
+                        message: `检测到扫描件，OCR 识别中：第 ${page}/${totalPages} 页（每页约 5-15 秒）...`,
+                    });
+                },
+            });
         } catch (extractError) {
             const errMsg = extractError.code === 'SCANNED_PDF'
                 ? extractError.message

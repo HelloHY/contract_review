@@ -17,7 +17,7 @@
  * - 下游：被 backgroundAnalysis 印章分析步骤调用
  */
 const path = require('path');
-const { createWorker } = require('tesseract.js');
+const { createWorker, OEM } = require('tesseract.js');
 const { extractCompanyNames } = require('../webSearch');
 const { analyzeSeal } = require('../sealVision');
 const { compactText } = require('./knowledge');
@@ -28,7 +28,13 @@ const runSealOcr = async (filePath) => {
         return { text: '', supported: false, reason: '当前 OCR 需要 PDF 中提取出的印章图片，或直接上传印章区域图片。' };
     }
 
-    const worker = await createWorker(process.env.SEAL_OCR_LANG || 'chi_sim+eng');
+    // 从本地 TESSDATA_DIR 读取语言包，离线可用（与扫描件 PDF OCR 共用同一份 tessdata_fast）
+    const langPath = path.resolve(__dirname, '..', '..', process.env.TESSDATA_DIR || 'data/tessdata');
+    const worker = await createWorker(process.env.SEAL_OCR_LANG || 'chi_sim+eng', OEM.LSTM_ONLY, {
+        langPath,
+        cacheMethod: 'none',
+        gzip: false,
+    });
     try {
         const { data } = await worker.recognize(filePath);
         return { text: data?.text || '', confidence: data?.confidence || 0, supported: true };
