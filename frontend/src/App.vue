@@ -38,13 +38,15 @@ export default {
     const user = computed(() => getCurrentUser());
     const displayName = computed(() => user.value?.displayName || user.value?.username || '');
     const roleText = computed(() => (user.value?.role === 'admin' ? '管理员' : '普通用户'));
+    // isAdmin 是普通函数，需用 computed 包裹才能在模板中响应式生效
+    const isAdminUser = computed(() => isAdmin());
 
     const handleLogout = () => {
       logout();
       router.replace('/login');
     };
 
-    return { showNav, displayName, roleText, isAdmin, handleLogout };
+    return { showNav, displayName, roleText, isAdmin: isAdminUser, handleLogout };
   },
 };
 </script>

@@ -10,6 +10,8 @@ backend/dist/
 .env
 .env.local
 **/.env
+**/.env.development
+**/.env.production
 !**/.env.example
 
 # Logs
@@ -29,6 +31,7 @@ desktop.ini
 
 # Database & storage
 data/*.db
+/data/
 uploads/
 storage/
 

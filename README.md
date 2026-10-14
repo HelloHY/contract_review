@@ -189,7 +189,7 @@ npm install
 npm run dev
 ```
 
-访问地址：**http://localhost:5173**
+访问地址：**http://localhost:8080**
 
 登录账号：**admin / admin123**
 
@@ -263,4 +263,3 @@ npm run build
 
 ## 📄 License
 
-MIT
