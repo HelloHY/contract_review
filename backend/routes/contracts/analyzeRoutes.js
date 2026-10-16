@@ -20,12 +20,14 @@
 const db = require('../../database');
 const { requireRequestUserId, getRequestUserId, findOwnedContract } = require('../../services/contractAnalysis/auth');
 const { extractTextFromFile, wrapContractContent } = require('../../services/contractAnalysis/fileExtraction');
-const { emitAnalysisProgress, createAnalysisJob, ANALYSIS_STEPS, TOTAL_EST_SECONDS, analysisJobs } = require('../../services/contractAnalysis/analysisJob');
+const { emitAnalysisProgress, createAnalysisJob, ANALYSIS_STEPS, TOTAL_EST_SECONDS, analysisJobs, getIoInstance } = require('../../services/contractAnalysis/analysisJob');
 const { callJsonLLM } = require('../../services/contractAnalysis/llm');
 const { matchTemplate, getTemplateById } = require('../../services/reviewTemplates');
 const { getRelevantKnowledge, annotateKnowledgeUpdates } = require('../../services/contractAnalysis/knowledge');
 const { parseJsonField } = require('../../services/contractAnalysis/reportRendering');
 const { runAnalysisInBackground } = require('../../services/contractAnalysis/backgroundAnalysis');
+const { logger } = require('../../utils/logger');
+const perf = require('../../utils/perfTimer');
 
 module.exports = function (router) {
     router.post('/pre-analyze', async (req, res) => {
@@ -34,24 +36,38 @@ module.exports = function (router) {
         const userId = requireRequestUserId(req, res);
         if (!userId) return;
 
+        const reqId = req.requestId;
+        const log = logger.child({ module: 'preAnalyze', reqId, contractId: Number(contractId) });
+        const totalTimer = perf.start(log, { stage: 'pre_analyze', reqId, label: '合同预分析' });
+
         try {
             const contract = await findOwnedContract(contractId, userId);
             if (!contract) return res.status(404).json({ error: 'Contract not found.' });
 
+            // Step 1: 提取合同正文
+            const extractTimer = perf.start(log, { stage: 'extract_text', reqId, label: '预分析-提取正文' });
             let plainText;
             try {
                 plainText = await extractTextFromFile(contract.storage_path, {
                     ocrFallback: true,
                     onProgress: ({ page, totalPages }) => {
-                        // 预分析阶段扫描件 OCR 逐页进度（经 Socket.IO 实时推送）
-                        emitAnalysisProgress(req, contractId, {
+                        // 扫描件逐页 OCR：只推 socket 不写库；前端在单条「合同预分析」任务内原地更新，
+                        // 避免每一页都新增一条任务条目
+                        const perPage = Number(process.env.PDF_OCR_SECONDS_PER_PAGE || 10);
+                        getIoInstance()?.to(`contract-${contractId}`).emit('analysis-progress', {
+                            contractId: Number(contractId),
                             step: 'pre_analysis',
                             status: 'running',
+                            // OCR 占预分析阶段前 80%，让顶部进度条能反映 26/30 这类整体进度
+                            percent: Math.min(80, Math.round((page / totalPages) * 80)),
+                            estimatedRemainingSeconds: Math.max(0, (totalPages - page) * perPage),
                             message: `检测到扫描件，OCR 识别中：第 ${page}/${totalPages} 页（每页约 5-15 秒）...`,
                         });
                     },
                 });
+                extractTimer.end({ charCount: String(plainText).length });
             } catch (extractError) {
+                extractTimer.fail(extractError);
                 if (extractError.code === 'SCANNED_PDF') {
                     return res.status(422).json({
                         error: extractError.message,
@@ -75,7 +91,10 @@ module.exports = function (router) {
                 preview: textPreview,
             };
 
-            await emitAnalysisProgress(req, contractId, { step: 'pre_analysis', status: 'running', message: '正在进行合同预分析。' });
+            await emitAnalysisProgress(req, contractId, { step: 'pre_analysis', status: 'running', message: '正在进行合同预分析。', percent: 85 });
+
+            // Step 2: LLM 预分析
+            const llmTimer = perf.start(log, { stage: 'llm_pre_analyze', reqId, label: '预分析-LLM 分类' });
             const prompt = `你是专业法务助手。阅读合同后只输出 JSON：
 {
   "contract_type": "合同类型",
@@ -93,7 +112,12 @@ module.exports = function (router) {
 ${wrapContractContent(plainText)}
 ---`;
             const analysisResult = await callJsonLLM(prompt);
+            llmTimer.end();
+
+            // Step 3: 模板匹配
+            const matchTimer = perf.start(log, { stage: 'template_match', reqId, label: '预分析-模板匹配' });
             const matchResult = await matchTemplate(analysisResult.contract_type, plainText);
+            matchTimer.end();
             // matchTemplate 返回单模板对象或混合合同数组;数组时取第一个作为主模板
             const template = Array.isArray(matchResult) ? (matchResult[0]?.template || null) : matchResult;
             analysisResult.template_id = template?.id || 'general';
@@ -110,15 +134,22 @@ ${wrapContractContent(plainText)}
             ]));
             analysisResult.text_stats = textStats;
 
+            // Step 4: 持久化预分析结果
+            const saveTimer = perf.start(log, { stage: 'save_pre_analysis', reqId, label: '预分析-保存结果' });
             await db('contracts').where({ id: contractId }).update({
                 status: 'PreAnalyzed',
                 analysis_status: 'pre_analyzed',
                 pre_analysis_data: JSON.stringify(analysisResult),
             });
-            await emitAnalysisProgress(req, contractId, { step: 'pre_analysis', status: 'completed', message: '合同预分析已完成。', partialResult: { preAnalysisData: analysisResult } });
+            saveTimer.end();
+
+            await emitAnalysisProgress(req, contractId, { step: 'pre_analysis', status: 'completed', message: '合同预分析已完成。', percent: 100, partialResult: { preAnalysisData: analysisResult } });
+            totalTimer.end({ contractType: analysisResult.contract_type, templateId: analysisResult.template_id });
+            log.info('预分析完成', { stage: 'pre_analyze', contractType: analysisResult.contract_type });
             res.json(analysisResult);
         } catch (error) {
-            console.error(`[ERROR] Pre-analysis failed for contract ${contractId}:`, error);
+            totalTimer.fail(error);
+            log.error('预分析失败', { stage: 'pre_analyze', message: error.message, stack: error.stack });
             res.status(500).json({ error: '预分析失败，请稍后重试。' });
         }
     });
@@ -131,6 +162,9 @@ ${wrapContractContent(plainText)}
         const userId = requireRequestUserId(req, res);
         if (!userId) return;
 
+        const reqId = req.requestId;
+        const log = logger.child({ module: 'analyze', reqId, contractId: Number(contractId) });
+
         try {
             const contract = await findOwnedContract(contractId, userId);
             if (!contract) return res.status(404).json({ error: 'Contract not found.' });
@@ -138,15 +172,18 @@ ${wrapContractContent(plainText)}
             // 若该合同已有正在运行的分析任务，拒绝重复触发
             const existingJob = analysisJobs.get(Number(contractId));
             if (existingJob && existingJob.status === 'running') {
+                log.warn('重复分析请求被拒绝', { stage: 'analyze', existingJobId: existingJob.jobId });
                 return res.status(409).json({ error: '该合同正在分析中，请等待当前分析完成。', jobId: existingJob.jobId });
             }
 
-            // 创建分析任务并立即返回 jobId，后台异步执行
-            const job = createAnalysisJob(contractId, userId);
+            // 创建分析任务并立即返回 jobId，后台异步执行；reqId 贯穿整个链路
+            const job = createAnalysisJob(contractId, userId, reqId);
             await db('contracts').where({ id: contractId }).update({
                 analysis_status: 'analyzing',
                 updated_at: db.fn.now(),
             });
+
+            log.info('分析任务已启动', { stage: 'analyze', jobId: job.jobId, contractType: preAnalysisData.contract_type, perspective: userPerspective });
 
             // 立即响应，不等分析完成
             res.status(202).json({
@@ -159,10 +196,10 @@ ${wrapContractContent(plainText)}
 
             // 后台异步执行（不 await）
             runAnalysisInBackground(contractId, userId, userPerspective, preAnalysisData).catch((err) => {
-                console.error('[ANALYSIS] Background task crashed:', err);
+                log.error('后台分析任务崩溃', { stage: 'analyze', message: err.message, stack: err.stack });
             });
         } catch (error) {
-            console.error('Error starting AI analysis:', error);
+            log.error('启动分析任务失败', { stage: 'analyze', message: error.message, stack: error.stack });
             res.status(500).json({ error: '启动分析任务失败。' });
         }
     });

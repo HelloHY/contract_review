@@ -50,11 +50,12 @@ const getStepProgress = (stepKey, status) => {
     return { percent: Math.min(percent, 100), stepIndex: idx, totalSteps: ANALYSIS_STEPS.length };
 };
 
-const createAnalysisJob = (contractId, userId) => {
+const createAnalysisJob = (contractId, userId, requestId) => {
     const job = {
         jobId: uuidv4(),
         contractId: Number(contractId),
         userId,
+        requestId: requestId || uuidv4(), // 贯穿完整链路的请求 ID
         status: 'queued',
         currentStep: null,
         percent: 0,

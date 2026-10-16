@@ -18,6 +18,7 @@
  */
 
 const { OpenAI } = require('openai');
+const { logger } = require('../utils/logger');
 
 let llmClient;
 
@@ -49,26 +50,52 @@ const createChatCompletion = async (options, requestOptions = {}) => {
     const maxRetries = Number(process.env.LLM_MAX_RETRIES || 2);
     const baseDelay = Number(process.env.LLM_RETRY_BASE_MS || 800);
     const timeout = Number(process.env.LLM_TIMEOUT_MS || 90000);
+    const model = getRequiredEnv('LLM_MODEL');
+    const log = logger.child({ module: 'llmClient', stage: 'chat_completion' });
+    const t0 = process.hrtime.bigint();
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         try {
-            return await getLlmClient().chat.completions.create({
-                model: getRequiredEnv('LLM_MODEL'),
+            const result = await getLlmClient().chat.completions.create({
+                model,
                 ...options,
             }, {
                 timeout,
                 ...requestOptions,
             });
+            const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+            log.info('Chat completion 完成', {
+                model,
+                attempt: attempt + 1,
+                promptLength: JSON.stringify(options.messages || '').length,
+                completionLength: result.choices?.[0]?.message?.content?.length || 0,
+                durationMs,
+            });
+            return result;
         } catch (error) {
             lastError = error;
             if (attempt >= maxRetries || !isRetryableError(error)) break;
             const delay = baseDelay * (2 ** attempt) + Math.floor(Math.random() * 250);
-            console.warn(`[LLM] Chat completion failed; retrying in ${delay}ms (${attempt + 1}/${maxRetries}).`, error.message);
+            log.warn('Chat completion 失败，准备重试', {
+                model,
+                attempt: attempt + 1,
+                maxRetries,
+                delayMs: delay,
+                error: error.message,
+            });
             await sleep(delay);
         }
     }
 
+    const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+    log.error('Chat completion 最终失败', {
+        model,
+        totalAttempts: maxRetries + 1,
+        durationMs,
+        error: lastError?.message || String(lastError),
+        stack: lastError?.stack,
+    });
     throw lastError;
 };
 
@@ -76,26 +103,50 @@ const createVisionCompletion = async (options, requestOptions = {}) => {
     const maxRetries = Number(process.env.LLM_MAX_RETRIES || 2);
     const baseDelay = Number(process.env.LLM_RETRY_BASE_MS || 800);
     const timeout = Number(process.env.LLM_TIMEOUT_MS || 90000);
+    const model = process.env.VISION_MODEL_NAME || 'Qwen/Qwen2.5-VL-7B-Instruct';
+    const log = logger.child({ module: 'llmClient', stage: 'vision_completion' });
+    const t0 = process.hrtime.bigint();
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
         try {
-            return await getLlmClient().chat.completions.create({
-                model: process.env.VISION_MODEL_NAME || 'Qwen/Qwen2.5-VL-7B-Instruct',
+            const result = await getLlmClient().chat.completions.create({
+                model,
                 ...options,
             }, {
                 timeout,
                 ...requestOptions,
             });
+            const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+            log.info('Vision completion 完成', {
+                model,
+                attempt: attempt + 1,
+                durationMs,
+            });
+            return result;
         } catch (error) {
             lastError = error;
             if (attempt >= maxRetries || !isRetryableError(error)) break;
             const delay = baseDelay * (2 ** attempt) + Math.floor(Math.random() * 250);
-            console.warn(`[LLM] Vision completion failed; retrying in ${delay}ms (${attempt + 1}/${maxRetries}).`, error.message);
+            log.warn('Vision completion 失败，准备重试', {
+                model,
+                attempt: attempt + 1,
+                maxRetries,
+                delayMs: delay,
+                error: error.message,
+            });
             await sleep(delay);
         }
     }
 
+    const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+    log.error('Vision completion 最终失败', {
+        model,
+        totalAttempts: maxRetries + 1,
+        durationMs,
+        error: lastError?.message || String(lastError),
+        stack: lastError?.stack,
+    });
     throw lastError;
 };
 

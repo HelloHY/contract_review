@@ -18,6 +18,7 @@
  */
 const db = require('../../database');
 const { searchVectorDocumentsMulti, splitIntoParagraphGroups } = require('../vectorStore');
+const { logger } = require('../../utils/logger');
 
 // 合同正文段落 chunk 检索上限：0 = 不限；超过部分不再生成子 query，控制长合同的检索成本
 const CONTRACT_CHUNK_MAX = Math.max(0, Number(process.env.CONTRACT_CHUNK_MAX || 0));
@@ -142,6 +143,8 @@ const mergeChannelsWithConfidence = (channelA, channelB, limit) => {
 // CONTRACT_CHUNK_MAX > 0 时限制通道 B 的 chunk 数，控制长合同检索成本
 const getRelevantKnowledge = async (options, limit = 8) => {
     const sourceTypes = ['law', 'case', 'rule', 'guide'];
+    const log = logger.child({ module: 'knowledge', stage: 'retrieve' });
+    const t0 = process.hrtime.bigint();
 
     // 字符串入口（纯文本）：单通道，按段落归并检索
     if (typeof options === 'string') {
@@ -151,6 +154,8 @@ const getRelevantKnowledge = async (options, limit = 8) => {
             sourceTypes,
             rerank: true,
         });
+        const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+        log.info('纯文本检索完成', { queryCount: queries.length, resultCount: matches.length, durationMs });
         return matches.map(toRelevantKnowledgeItem);
     }
 
@@ -176,6 +181,8 @@ const getRelevantKnowledge = async (options, limit = 8) => {
                 merged.push({ ...toRelevantKnowledgeItem(m), clause_id: clause.clause_id });
             }
         }
+        const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+        log.info('条款级检索完成', { clauseCount: options.clauses.length, resultCount: merged.length, durationMs });
         return merged;
     }
 
@@ -212,7 +219,17 @@ const getRelevantKnowledge = async (options, limit = 8) => {
             : Promise.resolve([]),
     ]);
 
-    return mergeChannelsWithConfidence(channelA, channelB, limit).map(toRelevantKnowledgeItem);
+    const merged = mergeChannelsWithConfidence(channelA, channelB, limit).map(toRelevantKnowledgeItem);
+    const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+    log.info('双通道检索完成', {
+        channelAQueries: channelAQueries.length,
+        channelBQueries: channelBQueries.length,
+        channelAResults: channelA.length,
+        channelBResults: channelB.length,
+        mergedCount: merged.length,
+        durationMs,
+    });
+    return merged;
 };
 
 const annotateKnowledgeUpdates = async (items) => {

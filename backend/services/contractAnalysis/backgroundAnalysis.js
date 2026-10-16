@@ -24,12 +24,14 @@ const ruleEngine = require('../ruleEngine');
 const contractParser = require('../contractParser');
 
 const { findOwnedContract } = require('./auth');
-const { emitAnalysisProgress, updateAnalysisJob, getIoInstance, TOTAL_EST_SECONDS } = require('./analysisJob');
+const { emitAnalysisProgress, updateAnalysisJob, getIoInstance, TOTAL_EST_SECONDS, analysisJobs } = require('./analysisJob');
 const { extractTextFromFile, wrapContractContent } = require('./fileExtraction');
 const { getRelevantKnowledge, annotateKnowledgeUpdates } = require('./knowledge');
 const { callJsonLLM } = require('./llm');
 const { normalizeAnalysisResult, aggregateClauseResults, buildStandardComparison } = require('./analysisCore');
 const { analyzeSealAndSignature } = require('./seal');
+const { logger } = require('../../utils/logger');
+const perf = require('../../utils/perfTimer');
 
 // 后台异步执行合同审查（不阻塞 HTTP 响应）
 const runAnalysisInBackground = async (contractId, userId, userPerspective, preAnalysisData) => {
@@ -39,8 +41,14 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
         return;
     }
 
+    const job = analysisJobs.get(Number(contractId));
+    const reqId = job?.requestId || 'unknown';
+    const log = logger.child({ module: 'backgroundAnalysis', reqId, contractId: Number(contractId) });
+    const totalTimer = perf.start(log, { stage: 'full_analysis', reqId, label: '完整合同审查' });
+
     try {
         // Step 1: 提取合同正文
+        const step1Timer = perf.start(log, { stage: 'extract_text', reqId, label: '提取合同正文' });
         await emitAnalysisProgress(null, contractId, { step: 'extract_text', status: 'running', message: '正在提取合同正文...' });
         let plainText;
         try {
@@ -61,11 +69,14 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
                     });
                 },
             });
+            step1Timer.end({ charCount: String(plainText).length });
         } catch (extractError) {
+            step1Timer.fail(extractError);
             const errMsg = extractError.code === 'SCANNED_PDF'
                 ? extractError.message
                 : (extractError.code === 'EMPTY_TEXT' ? extractError.message : `合同正文提取失败：${extractError.message}`);
             await emitAnalysisProgress(null, contractId, { step: 'extract_text', status: 'failed', message: errMsg });
+            totalTimer.fail(extractError);
             return;
         }
         await emitAnalysisProgress(null, contractId, { step: 'extract_text', status: 'completed', message: `已提取合同正文（${String(plainText).length} 字）。` });
@@ -80,6 +91,7 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
         const corePurposes = preAnalysisData.core_purposes?.length ? preAnalysisData.core_purposes : template.core_purposes;
 
         // Step 2: 检索法条与案例依据
+        const step2Timer = perf.start(log, { stage: 'knowledge_search', reqId, label: '检索法条与案例依据' });
         await emitAnalysisProgress(null, contractId, { step: 'knowledge_search', status: 'running', message: '正在检索法条与案例依据...' });
         // 分析整个合同，法律条文适当增加检索范围，如果后续需要，再增加检索数量 30 -> n
         const relevantKnowledge = await getRelevantKnowledge({
@@ -89,9 +101,11 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
             corePurposes,
             perspective: userPerspective,
         }, 40);
+        step2Timer.end({ count: relevantKnowledge.length });
         await emitAnalysisProgress(null, contractId, { step: 'knowledge_search', status: 'completed', message: `法条与案例依据检索已完成（${relevantKnowledge.length} 条）。`, partialResult: { relevant_laws: await annotateKnowledgeUpdates(relevantKnowledge) } });
 
         // Step 3: 核验合同主体信息
+        const step3Timer = perf.start(log, { stage: 'company_search', reqId, label: '核验合同主体信息' });
         await emitAnalysisProgress(null, contractId, { step: 'company_search', status: 'running', message: '正在核验合同主体信息...' });
         const companyNames = extractCompanyNames(plainText).slice(0, 3);
         const companySearchResults = await Promise.all(
@@ -109,7 +123,7 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
                         source: profile.data_source,
                     };
                 } catch (error) {
-                    console.error(`[companyVerify] 失败,回退网页搜索: ${name}`, error.message);
+                    log.warn('企业核验失败，回退网页搜索', { stage: 'company_search', company: name, error: error.message });
                     // 回退到原网页搜索
                     const webResult = await searchCompanyInfo(name);
                     return {
@@ -123,6 +137,7 @@ const runAnalysisInBackground = async (contractId, userId, userPerspective, preA
                 }
             }),
         );
+        step3Timer.end({ companyCount: companyNames.length });
         await emitAnalysisProgress(null, contractId, { step: 'company_search', status: 'completed', message: `合同主体信息核验已完成（${companyNames.length} 个主体）。`, partialResult: { company_search: companySearchResults } });
         const companySearchContext = companySearchResults.map((company, index) => {
             if (company.profile) {
@@ -148,18 +163,22 @@ ${riskItemsText}
         }).join('\n');
 
         // Step 3.5: 硬性合规检查（规则引擎）
+        const step35Timer = perf.start(log, { stage: 'rule_check', reqId, label: '硬性合规检查' });
         await emitAnalysisProgress(null, contractId, { step: 'rule_check', status: 'running', message: '正在执行硬性合规检查...' });
         let hardViolations = [];
         try {
             const externalValues = ruleEngine.loadExternalValues();
             const ruleResult = ruleEngine.runRules(plainText, template.id, externalValues);
             hardViolations = ruleResult.violations;
+            step35Timer.end({ violationCount: hardViolations.length });
         } catch (ruleErr) {
-            console.warn('[RuleEngine] 规则引擎执行失败:', ruleErr.message);
+            step35Timer.fail(ruleErr);
+            log.warn('规则引擎执行失败', { stage: 'rule_check', error: ruleErr.message });
         }
         await emitAnalysisProgress(null, contractId, { step: 'rule_check', status: 'completed', message: `硬性合规检查完成，检出 ${hardViolations.length} 项违规。`, partialResult: { hard_violations: hardViolations } });
 
         // Step 4: AI 生成审查结论
+        const step4Timer = perf.start(log, { stage: 'llm_review', reqId, label: 'AI 生成审查结论' });
         await emitAnalysisProgress(null, contractId, { step: 'llm_review', status: 'running', message: 'AI 正在深度审查合同，这是最耗时的步骤，请耐心等待...' });
         const prompt = `你是一名资深法务专家，请按审查模板对合同进行深度审查，并只输出 JSON。
 
@@ -350,24 +369,28 @@ ${clause.text}
             name: template.name,
             report_sections: template.report_sections || [],
         };
+        step4Timer.end();
         await emitAnalysisProgress(null, contractId, { step: 'llm_review', status: 'completed', message: 'AI 审查结论已生成。' });
 
         // Step 5: 印章与签章核验
+        const step5Timer = perf.start(log, { stage: 'seal_analysis', reqId, label: '印章与签章核验' });
         await emitAnalysisProgress(null, contractId, { step: 'seal_analysis', status: 'running', message: '正在进行印章与签章核验...' });
         analysisResult.seal_analysis = analysisResult.seal_analysis.length
             ? analysisResult.seal_analysis
             : await analyzeSealAndSignature(contract, plainText);
+        step5Timer.end();
         await emitAnalysisProgress(null, contractId, { step: 'seal_analysis', status: 'completed', message: '印章与签章核验已完成。' });
 
         // Step 5.5: 行业标准条款对比(P3 4.3) - 失败降级,不中断审查
         try {
             analysisResult.standard_comparison = await buildStandardComparison(plainText, preAnalysisData?.contract_type || contract.contract_type || '');
         } catch (stdErr) {
-            console.warn('[Analysis] standard_comparison failed, skipping:', stdErr.message);
+            log.warn('行业标准条款对比失败，跳过', { stage: 'standard_comparison', error: stdErr.message });
             analysisResult.standard_comparison = [];
         }
 
         // Step 6: 保存结果
+        const step6Timer = perf.start(log, { stage: 'finalize', reqId, label: '保存审查结果' });
         await emitAnalysisProgress(null, contractId, { step: 'finalize', status: 'running', message: '正在保存审查结果...' });
         await db('contracts').where({ id: contractId }).update({
             status: 'Reviewed',
@@ -377,12 +400,16 @@ ${clause.text}
             pre_analysis_data: JSON.stringify(preAnalysisData),
             perspective: userPerspective,
         });
+        step6Timer.end();
 
         updateAnalysisJob(contractId, { status: 'completed', result: analysisResult, percent: 100 });
         await emitAnalysisProgress(null, contractId, { step: 'finalize', status: 'completed', message: '审查结果已保存。', partialResult: analysisResult });
+        totalTimer.end();
+        log.info('完整合同审查完成', { stage: 'full_analysis', status: 'completed' });
         if (getIoInstance()) getIoInstance().to(`contract-${contractId}`).emit('analysis-complete', { results: analysisResult, perspective: userPerspective });
     } catch (error) {
-        console.error('Error during background AI analysis:', error);
+        totalTimer.fail(error);
+        log.error('后台分析失败', { stage: 'full_analysis', message: error.message, stack: error.stack });
         updateAnalysisJob(contractId, { status: 'failed', error: error.message });
         await emitAnalysisProgress(null, contractId, { step: 'failed', status: 'failed', message: `分析失败：${error.message}` });
         if (getIoInstance()) getIoInstance().to(`contract-${contractId}`).emit('analysis-failed', { error: error.message });

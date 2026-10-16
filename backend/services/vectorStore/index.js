@@ -25,6 +25,7 @@ const { parseLegalMarkdownFile } = require('../legalMarkdownParser');
 const { parseCaseJsonDocument } = require('../caseJsonParser');
 
 const { state, KNOWLEDGE_SEED_TYPES, LAW_SEED_FILE_BATCH_SIZE, CASE_SEED_FILE_BATCH_SIZE } = require('./config');
+const { logger } = require('../../utils/logger');
 const { normalizeText, splitTextIntoChunks, splitIntoParagraphs, splitIntoParagraphGroups } = require('./textChunking');
 const { listConfiguredLawDirs, listMarkdownFiles, listCaseJsonFiles, fallbackLawEntryFromFile } = require('./seedSources');
 const { ensureRelationalVectorTable, upsertRelationalRow, listKnowledgeDocuments, sqliteVectorSearch, keywordSearch, mergeSearchResults } = require('./relationalStore');
@@ -322,6 +323,8 @@ const syncAllVectorDocuments = async (onProgress) => {
 };
 
 const searchVectorDocuments = async (query, { limit = 5, sourceTypes = [], rerank = true, includeHistorical = false } = {}) => {
+    const log = logger.child({ module: 'vectorStore', stage: 'search' });
+    const t0 = process.hrtime.bigint();
     await ensureVectorStore();
     const cleanQuery = normalizeText(query);
     const queryVector = await embedText(cleanQuery);
@@ -329,16 +332,28 @@ const searchVectorDocuments = async (query, { limit = 5, sourceTypes = [], reran
     // 会把精确匹配的高相关文档挡在候选集外,rerank 无能为力
     const candidateLimit = Math.max(limit * 8, 48);
     let results = await milvusVectorSearch(queryVector, { limit: candidateLimit, sourceTypes, includeHistorical });
+    const milvusResultCount = results?.length || 0;
     // Milvus 返回空数组时也回退到关系库（避免 Milvus 无数据但 SQLite 有数据时搜不到）
     if (!results || results.length === 0) {
         if (results && results.length === 0 && state.milvusReady) {
-            console.log('[Vector Search] Milvus returned 0 results, falling back to relational vectors.');
+            log.warn('Milvus 返回 0 条结果，回退到关系库向量检索', { queryLength: cleanQuery.length, limit });
         }
         results = await sqliteVectorSearch(cleanQuery, queryVector, { limit: candidateLimit, sourceTypes, includeHistorical });
     }
     const keywordResults = await keywordSearch(cleanQuery, { limit: candidateLimit, sourceTypes, includeHistorical });
     results = mergeSearchResults(results, keywordResults, candidateLimit);
     const reranked = rerank ? await rerankDocuments(cleanQuery, results, limit) : results.slice(0, limit);
+    const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+    log.info('向量检索完成', {
+        queryLength: cleanQuery.length,
+        limit,
+        sourceTypes: sourceTypes.length,
+        milvusResults: milvusResultCount,
+        mergedResults: results.length,
+        finalResults: reranked.length,
+        rerank,
+        durationMs,
+    });
     return reranked.slice(0, limit);
 };
 

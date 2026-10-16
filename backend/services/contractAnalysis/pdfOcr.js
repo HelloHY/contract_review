@@ -26,6 +26,7 @@
 const fs = require('fs');
 const path = require('path');
 const napiCanvas = require('@napi-rs/canvas');
+const { logger } = require('../../utils/logger');
 // pdfjs-dist v3 在 Node 下会尝试 require('canvas') 来 polyfill 这些全局对象；
 // 预先用 @napi-rs/canvas 的实现注入，避免额外引入 node-canvas
 for (const key of ['DOMMatrix', 'Path2D', 'ImageData']) {
@@ -73,6 +74,10 @@ class NodeCanvasFactory {
 const extractTextFromScannedPdf = async (filePath, options = {}) => {
     const config = getConfig(options);
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const log = logger.child({ module: 'pdfOcr', stage: 'ocr', file: path.basename(filePath) });
+
+    const t0 = process.hrtime.bigint();
+    log.info('扫描件 OCR 开始', { maxPages: config.maxPages, scale: config.scale, lang: config.lang });
 
     const data = new Uint8Array(fs.readFileSync(filePath));
     const canvasFactory = new NodeCanvasFactory();
@@ -123,6 +128,10 @@ const extractTextFromScannedPdf = async (filePath, options = {}) => {
         await worker.terminate();
         await doc.destroy();
     }
+
+    const durationMs = Math.round(Number(process.hrtime.bigint() - t0) / 1_000_000);
+    const totalChars = pageTexts.reduce((sum, t) => sum + t.length, 0);
+    log.info('扫描件 OCR 完成', { pageCount, ocrPages, truncated, totalChars, durationMs });
 
     return {
         text: pageTexts.filter(Boolean).join('\n\n'),

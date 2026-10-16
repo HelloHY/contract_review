@@ -34,9 +34,20 @@ const { seedTemplatesIfEmpty } = require('./services/reviewTemplates');
 const { seedLawsFromMarkdown, seedCasesFromJson, syncAllVectorDocuments } = require('./services/vectorStore');
 const db = require('./database');
 const resetAndRebuildDatabase = require('./database-check');
+const requestLogger = require('./middleware/requestLogger');
+const errorLogger = require('./middleware/errorLogger');
+const { logger } = require('./utils/logger');
 
 const http = require('http');
 const { Server } = require('socket.io');
+
+// 未捕获异常兜底：进程不退出，仅记录
+process.on('uncaughtException', (err) => {
+    logger.error('UncaughtException', { stage: 'process', message: err.message, stack: err.stack });
+});
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('UnhandledRejection', { stage: 'process', message: reason?.message || String(reason), stack: reason?.stack });
+});
 
 const app = express();
 const server = http.createServer(app);
@@ -50,16 +61,18 @@ const port = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
+// 请求日志 + 请求 ID 注入（必须在 body parser 之前，确保 body 解析失败的请求也有 requestId）
+app.use(requestLogger);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Socket.io logic
 io.on('connection', (socket) => {
-  console.log('A user connected:', socket.id);
+  logger.info('A user connected', { module: 'socket', socketId: socket.id });
 
   socket.on('join-contract', (contractId) => {
     socket.join(`contract-${contractId}`);
-    console.log(`User ${socket.id} joined room: contract-${contractId}`);
+    logger.info(`User joined room: contract-${contractId}`, { module: 'socket', socketId: socket.id, contractId: Number(contractId) });
     // Notify others in the room
     socket.to(`contract-${contractId}`).emit('user-joined', { userId: socket.id });
   });
@@ -75,7 +88,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    logger.info('User disconnected', { module: 'socket', socketId: socket.id });
   });
 });
 
@@ -106,20 +119,8 @@ app.get('/', (req, res) => {
   res.send('ContractGE Backend is running!');
 });
 
-// Multer 错误处理中间件：文件大小超限、格式不支持等返回 JSON
-app.use((err, req, res, next) => {
-  if (err) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ error: '文件大小超过 50MB 限制，请压缩或拆分后上传。', code: 'FILE_TOO_LARGE' });
-    }
-    if (err.message && err.message.startsWith('UNSUPPORTED_FILE_TYPE')) {
-      return res.status(400).json({ error: '仅支持 .docx 和 .pdf 格式的文件。', code: 'UNSUPPORTED_FILE_TYPE' });
-    }
-    console.error('[ERROR] Unhandled middleware error:', err);
-    return res.status(500).json({ error: '服务器处理请求时发生错误。' });
-  }
-  next();
-});
+// Multer 错误处理中间件已迁移至 errorLogger，此处统一兜底
+app.use(errorLogger);
 
 async function startServer() {
   await resetAndRebuildDatabase();
@@ -128,7 +129,7 @@ async function startServer() {
   // seed 公共标准条款(需在 standard_clauses 表创建后执行;原 standards.js 模块加载时触发会因表未创建而失败)
   await standardRoutes.seedPublicClausesIfEmpty();
   server.listen(port, () => {
-    console.log(`Backend server listening at http://localhost:${port}`);
+    logger.info(`Backend server listening at http://localhost:${port}`, { module: 'app', stage: 'startup', port: Number(port) });
     // 后台异步:先把法律/案例入库 PostgreSQL(skipMilvus),再全量同步 PG -> Milvus
     // 不阻塞主进程启动;前端"重建向量数据库"按钮执行同样的 PG -> Milvus 同步操作
     seedKnowledgeInBackground();
@@ -138,27 +139,28 @@ async function startServer() {
 // 后台异步导入知识库:先入 PostgreSQL(skipMilvus 跳过 Milvus 双写),再同步 PG -> Milvus
 // 失败仅记录日志,不影响主进程;与前端"重建向量数据库"按钮调用同一个 syncAllVectorDocuments
 async function seedKnowledgeInBackground() {
-  const log = (msg) => console.log(`[Background Seed] ${msg}`);
+  const log = (msg, meta = {}) => logger.info(`[Background Seed] ${msg}`, { module: 'seed', stage: 'background_seed', ...meta });
+  const warn = (msg, meta = {}) => logger.error(`[Background Seed] ${msg}`, { module: 'seed', stage: 'background_seed', ...meta });
   log('Step 1/3: importing laws into PostgreSQL (skipMilvus)...');
   try {
     const lawResult = await seedLawsFromMarkdown(undefined, { skipMilvus: true });
     log(`Laws import finished: ${JSON.stringify(lawResult)}`);
   } catch (error) {
-    console.error(`[Background Seed] Laws import failed: ${error.message}`);
+    warn(`Laws import failed: ${error.message}`, { error: error.message });
   }
   log('Step 2/3: importing cases into PostgreSQL (skipMilvus)...');
   try {
     const caseResult = await seedCasesFromJson(undefined, { skipMilvus: true });
     log(`Cases import finished: ${JSON.stringify(caseResult)}`);
   } catch (error) {
-    console.error(`[Background Seed] Cases import failed: ${error.message}`);
+    warn(`Cases import failed: ${error.message}`, { error: error.message });
   }
   log('Step 3/3: syncing PostgreSQL -> Milvus (vector index)...');
   try {
     const syncResult = await syncAllVectorDocuments();
     log(`Milvus sync finished: ${JSON.stringify(syncResult)}`);
   } catch (error) {
-    console.error(`[Background Seed] Milvus sync failed: ${error.message}`);
+    warn(`Milvus sync failed: ${error.message}`, { error: error.message });
   }
   log('Background knowledge import done.');
 }

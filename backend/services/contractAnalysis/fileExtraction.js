@@ -20,6 +20,7 @@ const path = require('path');
 const fs = require('fs');
 const mammoth = require('mammoth');
 const pdf = require('pdf-parse');
+const { logger } = require('../../utils/logger');
 
 // 检测 PDF 是否为扫描件（图像型）：文本极少且页数大于0
 const detectScannedPdf = (pdfData) => {
@@ -80,7 +81,7 @@ const extractTextFromFile = async (filePath, { onProgress = null, ocrFallback = 
                         return finalText;
                     }
                 } catch (ocrError) {
-                    console.error('[OCR] 扫描件识别失败:', ocrError.message);
+                    logger.error('扫描件 OCR 识别失败', { module: 'fileExtraction', stage: 'ocr', message: ocrError.message, stack: ocrError.stack });
                 }
                 const err = new Error('该 PDF 为扫描件，OCR 未能识别出有效文本。请检查扫描件清晰度，或上传可复制的文字版 PDF。');
                 err.code = 'SCANNED_PDF';
