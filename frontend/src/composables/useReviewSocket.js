@@ -13,7 +13,7 @@ export function useReviewSocket(state, deps) {
         analysisActive, analysisPercent, analysisEta, analysisElapsed,
         analysisProgress, analysisSteps, clauseProgress,
         perspective, reAnalyzing, socket,
-        contractModifiedNotice,
+        contractModifiedNotice, progressStepLabel,
     } = state;
     const { startStatusPolling, stopStatusPolling, stopElapsedTimer } = deps;
 
@@ -60,18 +60,41 @@ export function useReviewSocket(state, deps) {
         });
 
         socket.value.on('analysis-progress', (data) => {
-            analysisProgress.value.push(data);
+            const stepKey = data.step || 'progress';
+            // 同一阶段只保留一条记录并原地更新：扫描件逐页 OCR 会高频推送，
+            // 若按事件追加会把单文档的分页子步骤膨胀成多条独立任务
+            const progressIdx = analysisProgress.value.findIndex((item) => (item.step || 'progress') === stepKey);
+            if (progressIdx >= 0) {
+                analysisProgress.value[progressIdx] = { ...analysisProgress.value[progressIdx], ...data };
+            } else {
+                analysisProgress.value.push(data);
+            }
             if (typeof data.percent === 'number') analysisPercent.value = data.percent;
             if (typeof data.estimatedRemainingSeconds === 'number') analysisEta.value = data.estimatedRemainingSeconds;
             if (typeof data.elapsedSeconds === 'number') analysisElapsed.value = data.elapsedSeconds;
             if (Array.isArray(data.steps)) {
                 analysisSteps.value = data.steps;
             } else if (data.step && data.status) {
-                const stepKey = data.step;
-                const stepStatus = data.status;
-                analysisSteps.value = analysisSteps.value.map((s) =>
-                    s.key === stepKey ? { ...s, status: stepStatus, message: data.message || s.message || '' } : s
-                );
+                const stepIdx = analysisSteps.value.findIndex((s) => s.key === stepKey);
+                if (stepIdx >= 0) {
+                    // 阶段已存在：只更新状态与子进度文本，不新增任务条目
+                    analysisSteps.value[stepIdx] = {
+                        ...analysisSteps.value[stepIdx],
+                        status: data.status,
+                        message: data.message || analysisSteps.value[stepIdx].message || '',
+                    };
+                } else {
+                    // 新阶段（如预分析阶段的扫描件 OCR）首次出现时补一条主任务
+                    analysisSteps.value = [
+                        ...analysisSteps.value,
+                        {
+                            key: stepKey,
+                            label: progressStepLabel(stepKey),
+                            status: data.status,
+                            message: data.message || '',
+                        },
+                    ];
+                }
             }
             if (data.partialResult) {
                 Object.assign(reviewData, data.partialResult);

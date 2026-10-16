@@ -6,12 +6,12 @@
         <span v-if="analysisPercent > 0" class="text-2xl font-bold text-primary">{{ analysisPercent }}%</span>
       </div>
 
-      <!-- 进度条 -->
-      <div v-if="analysisActive" class="w-full mb-3">
+      <!-- 进度条：预分析阶段（扫描件 OCR）无 analysisActive，靠 analysisPercent 显示 -->
+      <div v-if="analysisActive || analysisPercent > 0" class="w-full mb-3">
         <div class="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
           <div class="bg-primary h-2.5 rounded-full transition-all duration-500 ease-out" :style="{ width: analysisPercent + '%' }"></div>
         </div>
-        <div class="flex justify-between text-xs text-text-light mt-1">
+        <div v-if="analysisActive" class="flex justify-between text-xs text-text-light mt-1">
           <span>已用时：{{ formatDuration(analysisElapsed) }}</span>
           <span v-if="analysisEta > 0">预计剩余：{{ formatDuration(analysisEta) }}</span>
           <span v-else-if="analysisActive">预计剩余：即将完成...</span>

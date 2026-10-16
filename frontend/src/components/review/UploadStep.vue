@@ -5,11 +5,14 @@
 
     <div class="mt-10 w-full max-w-2xl">
       <el-upload
+        ref="mainUploadRef"
         class="upload-dragger"
         drag
         action=""
-        :http-request="({ file }) => uploadAndGo(file)"
+        :limit="1"
+        :http-request="handleMainUploadRequest"
         :before-upload="handleBeforeUpload"
+        :on-exceed="handleMainUploadExceed"
         :show-file-list="false"
       >
         <div class="flex flex-col items-center justify-center p-10">
@@ -101,8 +104,8 @@
 </template>
 
 <script>
-import { inject, onMounted } from 'vue';
-import { ElUpload } from 'element-plus';
+import { inject, ref } from 'vue';
+import { ElMessage, ElUpload } from 'element-plus';
 
 export default {
   name: 'UploadStep',
@@ -116,7 +119,27 @@ export default {
       removeLinkedFile, startLinkedContractAnalysis,
     } = review;
 
+    const mainUploadRef = ref(null);
+
+    // 主上传区一次只审查 1 份合同：先清空 el-upload 内部文件列表，
+    // 避免上一次上传留下的 success 记录使 limit 误判、阻塞后续单选
+    const handleMainUploadRequest = ({ file }) => {
+      mainUploadRef.value?.clearFiles?.();
+      return uploadAndGo(file);
+    };
+
+    // 一次选中多份（超出 limit=1）时不静默丢弃，而是引导改用「多合同关联分析」面板
+    const handleMainUploadExceed = (files) => {
+      mainUploadRef.value?.clearFiles?.();
+      ElMessage.warning({
+        message: `主上传区一次只能审查 1 份合同，已忽略其余 ${files.length - 1} 份。若要同时审查多份（主合同、附件、补充协议），请使用下方「多合同关联分析」面板。`,
+        duration: 6000,
+        showClose: true,
+      });
+    };
+
     return {
+      mainUploadRef, handleMainUploadRequest, handleMainUploadExceed,
       uploadAndGo, handleBeforeUpload, linkedGroupFiles,
       linkedAnalysisLoading, linkedAnalysisResult, linkedAnalysisProgress,
       linkedFileInput, openLinkedFilePicker, handleLinkedFilesChange,
