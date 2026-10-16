@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 8080,
+      // 启动 dev server 后自动打开浏览器
+      open: true,
       proxy: {
         '/api': {
           target: env.VITE_APP_BACKEND_API_URL || 'http://localhost:3000',

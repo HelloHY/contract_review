@@ -41,6 +41,48 @@
 
 ---
 
+## 📸 界面展示
+
+> 以下均为本地实际运行截图，前端已将「文件库」与「合同审核」拆分为独立页面，并按 admin 角色做路由守卫。
+
+### 1. 工作台（首页 · `/`）
+
+上传入口与四步审查流程引导：上传合同 → 确认范围 → 查看结果 → 采纳修改。
+
+<img src="docs/images/01-workbench.png" width="820" alt="工作台首页 - 合同审查工作台">
+
+### 2. 文件库（`/library`）
+
+合同文件集中管理：按文件名搜索、按状态/类型筛选、分页，支持查看详情、继续审查与删除。
+
+<img src="docs/images/02-file-library.png" width="820" alt="文件库 - 合同文件管理">
+
+### 3. 合同审查（`/review`）
+
+智能合同审查上传页，支持 .docx / .pdf（扫描件自动本地 OCR），并提供多合同关联分析（主合同 + 附件 + 补充协议一并审查）。
+
+<img src="docs/images/03-contract-review.png" width="820" alt="合同审查 - 智能合同审查上传">
+
+### 4. 智能问答（`/qna`）
+
+可按合同隔离上下文提问法律与合同问题，也可直接咨询法条、裁判文书、审查规则。
+
+<img src="docs/images/04-qa.png" width="820" alt="智能问答 - 法律与合同问答">
+
+### 5. 知识库（`/knowledge`）
+
+统一管理审查依据：知识库（法条/裁判文书）、审查模板管理、标准条款库，支持重建向量数据库与失效法律标注。
+
+<img src="docs/images/05-knowledge-base.png" width="820" alt="知识库 - 管理审查依据">
+
+### 6. 用户管理（`/users` · 仅 admin）
+
+权限管理页面，仅管理员可访问，用于查看系统用户并管理角色权限。
+
+<img src="docs/images/06-user-management.png" width="820" alt="用户管理 - 权限管理">
+
+---
+
 ## 🏗️ 技术栈
 
 ### 前端
@@ -96,6 +138,7 @@
 │       └── user.js              # 登录态 / 角色 / 登出
 │
 ├── data/                        # Docker 持久化目录（已忽略）
+├── docs/images/                 # README 界面展示截图
 ├── docker-compose.yml
 └── README.md
 ```
